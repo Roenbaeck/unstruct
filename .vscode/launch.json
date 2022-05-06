@@ -1,0 +1,45 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.1.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'unstruct'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=unstruct",
+                    "--package=unstruct"
+                ],
+                "filter": {
+                    "name": "unstruct",
+                    "kind": "bin"
+                }
+            },
+            "args": ["--filename", "data/*.xml"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'unstruct'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=unstruct",
+                    "--package=unstruct"
+                ],
+                "filter": {
+                    "name": "unstruct",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
