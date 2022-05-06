@@ -5,11 +5,9 @@ use clap::Parser;
 use std::collections::HashMap;
 use glob::glob;
 
-/// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    /// Name of the person to greet
     #[clap(short, long)]
     filename: String,
 }
@@ -43,14 +41,6 @@ fn main() {
             Err(e) => println!("{:?}", e),
         }
     }
-
-
-    // println!("Map: {:?}", map);
-
-
-    // test
-    //let elem = doc.descendants().find(|n| n.has_tag_name("CDR")).unwrap();
-    //let elem = elem.descendants().find(|n| n.has_tag_name("recordType")).unwrap();
 
     println!("All done!");
 }
