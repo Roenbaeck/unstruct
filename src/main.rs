@@ -23,12 +23,12 @@ fn main() {
     println!("Finding files matching: {}", &filename);
 
     // use the glob to find matching files
-    for entry in glob(&filename).expect("Failed to read glob pattern!") {
+    for entry in glob(&filename).expect("Failed to read glob pattern") {
         match entry {
             Ok(path) => {
                 println!("Parsing the file: {:?}", &path.display());
                 let contents = fs::read_to_string(&path).expect("Something went wrong reading the file");
-                let doc = roxmltree::Document::parse(&contents).unwrap();
+                let doc = roxmltree::Document::parse(&contents).expect("Could not parse the xml");
                 for element in doc.descendants() {
                     match map.get(&element.tag_name().name().to_string()) {
                         Some(mapping) => {
