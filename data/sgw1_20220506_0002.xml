@@ -29,6 +29,23 @@
                     <aPNAggregateMaxBitrateDL>250000000</aPNAggregateMaxBitrateDL>
                 </ePCQoSInformation>
             </ChangeOfCharCondition>
+            <ChangeOfCharCondition>
+                <dataVolumeGPRSUplink>4712</dataVolumeGPRSUplink>
+                <dataVolumeGPRSDownlink>1001001</dataVolumeGPRSDownlink>
+                <changeCondition>recordClosure</changeCondition>
+                <changeTime>2105110842072B0200</changeTime>
+                <userLocationInformation>1842F030006742F0300012EE01</userLocationInformation>
+                <ePCQoSInformation>
+                    <qCI>9</qCI>
+                    <maxRequestedBandwithUL>0</maxRequestedBandwithUL>
+                    <maxRequestedBandwithDL>0</maxRequestedBandwithDL>
+                    <guaranteedBitrateUL>0</guaranteedBitrateUL>
+                    <guaranteedBitrateDL>0</guaranteedBitrateDL>
+                    <aRP>108</aRP>
+                    <aPNAggregateMaxBitrateUL>60000000</aPNAggregateMaxBitrateUL>
+                    <aPNAggregateMaxBitrateDL>250000000</aPNAggregateMaxBitrateDL>
+                </ePCQoSInformation>
+            </ChangeOfCharCondition>
         </listOfTrafficVolumes>
         <recordOpeningTime>2105110816332B0200</recordOpeningTime>
         <duration>200</duration>

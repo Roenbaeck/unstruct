@@ -1,0 +1,9 @@
+{
+    servedIMSICol = "servedIMSI"
+    recordTypeCol = "recordType"
+    chargingIDCol = "chargingID"
+    {
+        dataVolumeGPRSUplinkCol = "dataVolumeGPRSUplink"
+        dataVolumeGPRSDownlinkCol = "dataVolumeGPRSDownlink"
+    }
+}

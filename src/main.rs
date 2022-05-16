@@ -1,9 +1,9 @@
 use std::fs;
 use roxmltree;
-use config;
 use clap::Parser;
 use std::collections::HashMap;
 use glob::glob;
+use unstruct::config;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -14,8 +14,8 @@ struct Args {
 
 fn main() {
     // read the config containing the mapping between elements and columns
-    let cfg = config::Config::builder().add_source(config::File::with_name("unstruct.ini")).build().unwrap();
-    let map = cfg.try_deserialize::<HashMap<String, String>>().unwrap();
+
+
 
     // parse the arguments to get the filename glob pattern
     let args = Args::parse();
@@ -31,8 +31,9 @@ fn main() {
                 let doc = roxmltree::Document::parse(&contents).expect("Could not parse the xml");
                 for element in doc.descendants() {
                     match map.get(&element.tag_name().name().to_string()) {
-                        Some(mapping) => {
-                            println!("Hit: {} = {}",&mapping, &element.text().unwrap());
+                        Some(column) => {
+                            result.insert(column, element.text().unwrap().to_owned());
+                            println!("Hit: {} = {}", column, result.get(column).unwrap());
                         }
                         None => ()
                     };
@@ -43,4 +44,5 @@ fn main() {
     }
 
     println!("All done!");
+    println!("{:?}", result);
 }
