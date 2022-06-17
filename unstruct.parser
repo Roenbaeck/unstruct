@@ -1,13 +1,11 @@
 {
     servedIMSI = "servedIMSI"
-    accessPointNameNI = "accessPointNameNI"
     servedMSISDN = "servedMSISDN"
     servedIMEISV = "servedIMEISV"
     recordOpeningTime = "recordOpeningTime"
     {
         {
             changeTime = "changeTime"
-            changeCondition = "changeCondition"
             dataVolumeGPRSUplink = "dataVolumeGPRSUplink"
             dataVolumeGPRSDownlink = "dataVolumeGPRSDownlink"
         }

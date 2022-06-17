@@ -2,7 +2,7 @@
 <CDR>
     <sGW-GPRS-Ascii>
         <recordType>84</recordType>
-        <servedIMSI>123456789012345</servedIMSI>
+        <servedIMSI>123456789012345_1_1</servedIMSI>
         <s-GWAddress>192.168.1.1</s-GWAddress>
         <chargingID>987654321</chargingID>
         <servingNodeAddress>
