@@ -1,9 +1,17 @@
 {
-    servedIMSICol = "servedIMSI"
-    recordTypeCol = "recordType"
-    chargingIDCol = "chargingID"
+    servedIMSI = "servedIMSI"
+    accessPointNameNI = "accessPointNameNI"
+    servedMSISDN = "servedMSISDN"
+    servedIMEISV = "servedIMEISV"
+    recordOpeningTime = "recordOpeningTime"
     {
-        dataVolumeGPRSUplinkCol = "dataVolumeGPRSUplink"
-        dataVolumeGPRSDownlinkCol = "dataVolumeGPRSDownlink"
+        {
+            changeTime = "changeTime"
+            changeCondition = "changeCondition"
+            dataVolumeGPRSUplink = "dataVolumeGPRSUplink"
+            dataVolumeGPRSDownlink = "dataVolumeGPRSDownlink"
+        }
     }
+    duration = "duration"
 }
+

@@ -1,4 +1,4 @@
-block = _{ "{" ~ (directive | block)* ~ "}" }
+block = { "{" ~ (directive | block)* ~ "}" }
 
 // tokens
 COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
