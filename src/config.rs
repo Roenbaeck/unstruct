@@ -13,7 +13,7 @@ pub struct Directive {
     pub column_name: String
 }
 
-pub fn block_recurse(remainder: Pairs<Rule>, matcher: &mut HashMap<String, Directive>, level: usize) {
+pub fn block_recurse(remainder: Pairs<Rule>, matcher: &mut HashMap<String, Directive>, header: &mut Vec<String>, level: usize) {
     for directive_or_block in remainder {
         match directive_or_block.as_rule() {
             Rule::directive => {
@@ -45,9 +45,10 @@ pub fn block_recurse(remainder: Pairs<Rule>, matcher: &mut HashMap<String, Direc
                         column_name: column_name.as_ref().unwrap().to_owned()
                     }
                 );
+                header.push(column_name.as_ref().unwrap().to_owned());
             }
             Rule::block => {
-                block_recurse(directive_or_block.into_inner(), matcher, level + 1);
+                block_recurse(directive_or_block.into_inner(), matcher, header, level + 1);
             }
             _ => {
                 println!("Parsing error: {:?}", directive_or_block);
@@ -56,11 +57,12 @@ pub fn block_recurse(remainder: Pairs<Rule>, matcher: &mut HashMap<String, Direc
     }
 }
 
-pub fn parse(configuration: &str) -> HashMap<String, Directive> {
+pub fn parse(configuration: &str) -> (HashMap<String, Directive>, Vec<String>) {
     // println!("The configuration is:\n{}", configuration);
     let remainder = UnstructParser::parse(Rule::block, configuration.trim()).expect("Parsing error");
     let mut matcher: HashMap<String, Directive> = HashMap::default();
-    block_recurse(remainder, &mut matcher, 0);
+    let mut header: Vec<String> = Vec::default();
+    block_recurse(remainder, &mut matcher, &mut header, 0);
     // println!("{:?}", &matcher);
-    matcher
+    (matcher, header)
 }

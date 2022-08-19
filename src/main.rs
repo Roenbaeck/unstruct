@@ -28,12 +28,8 @@ const TERMINATOR: char = '\n';
 fn main() {
     // read the config containing the mapping between elements and columns
     let configuration = read_to_string("unstruct.parser").unwrap();
-    let matcher = parse(&configuration);
-    let mut result: HashMap<String, Match> = HashMap::default();
-    let mut header: Vec<&Directive> = Vec::default(); // repeatable list, since .values is not
-    for directive in matcher.values() {
-        header.push(directive);
-    }            
+    let (matcher, header) = parse(&configuration);
+    let mut result: HashMap<String, Match> = HashMap::default();      
 
     // parse the arguments to get the filename glob pattern
     let args = Args::parse();
@@ -44,8 +40,8 @@ fn main() {
 
     let mut output = File::create(outfile).unwrap();
     let mut peekable_header = header.iter().peekable();
-    while let Some(directive) = peekable_header.next() {
-        write!(output, "{}", directive.column_name).expect("Cannot write to output file");
+    while let Some(head) = peekable_header.next() {
+        write!(output, "{}", head).expect("Cannot write to output file");
         if peekable_header.peek().is_none() {
             write!(output, "{}", TERMINATOR).expect("Cannot write to output file");
         }
@@ -62,8 +58,8 @@ fn main() {
                 let contents = fs::read_to_string(&path).expect("Something went wrong reading the file");
                 let doc = roxmltree::Document::parse(&contents).expect("Could not parse the xml");
                 let mut peekable_header = header.iter().peekable();
-                while let Some(directive) = peekable_header.next() {
-                    result.insert(directive.column_name.to_owned(), Match::Nothing);
+                while let Some(head) = peekable_header.next() {
+                    result.insert(head.to_owned(), Match::Nothing);
                 }
                 let mut parsed: HashSet<String> = HashSet::default();
                 for element in doc.descendants() {
@@ -75,9 +71,9 @@ fn main() {
                                 if parsed.get(&column.column_name).is_some() {
                                     parsed = HashSet::default();
                                     let mut peekable_header = header.iter().peekable();
-                                    while let Some(directive) = peekable_header.next() {
+                                    while let Some(head) = peekable_header.next() {
                                         // println!("FINDING: {}", directive.column_name);
-                                        match result.get(&directive.column_name).unwrap() {
+                                        match result.get(head).unwrap() {
                                             Match::Value(column_value) => {
                                                 // println!("WRITING: {}", column_value);
                                                 write!(output, "{}", column_value).expect("Cannot write to output file");
@@ -106,9 +102,9 @@ fn main() {
                 // println!("HERE!");
                 if parsed.len() > 0 {
                     let mut peekable_header = header.iter().peekable();
-                    while let Some(directive) = peekable_header.next() {
+                    while let Some(head) = peekable_header.next() {
                         // println!("FINDING: {}", directive.column_name);
-                        match result.get(&directive.column_name).unwrap() {
+                        match result.get(head).unwrap() {
                             Match::Value(column_value) => {
                                 // println!("WRITING: {}", column_value);
                                 write!(output, "{}", column_value).expect("Cannot write to output file");
@@ -129,5 +125,5 @@ fn main() {
     }
 
     println!("All done!");
-    println!("{:?}", result);
+    // println!("{:?}", result);
 }
