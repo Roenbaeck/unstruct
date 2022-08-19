@@ -1,3 +1,4 @@
+
 {
     servedIMSI = "servedIMSI"
     servedMSISDN = "servedMSISDN"
@@ -11,5 +12,6 @@
         }
     }
     duration = "duration"
+    durationUnit = "duration/@unit"
 }
 

@@ -1,7 +1,7 @@
 block = { "{" ~ (directive | block)* ~ "}" }
 
 // tokens
-COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+COMMENT = _{ "#" ~ (!"\n" ~ ANY)*  }
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
 digit = _{ '0'..'9' }

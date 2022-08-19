@@ -64,7 +64,7 @@ fn main() {
                 let mut parsed: HashSet<String> = HashSet::default();
                 for element in doc.descendants() {
                     if element.is_element() {
-                        // println!("Looking for: {}", &element.tag_name().name().to_string());
+                        println!("Looking for: {}", &element.tag_name().name().to_string());
                         match matcher.get(&element.tag_name().name().to_string()) {
                             Some(column) => {
                                 // if we parse something again, write out what we have
@@ -72,10 +72,10 @@ fn main() {
                                     parsed = HashSet::default();
                                     let mut peekable_header = header.iter().peekable();
                                     while let Some(head) = peekable_header.next() {
-                                        // println!("FINDING: {}", directive.column_name);
+                                        println!("FINDING: {}", head);
                                         match result.get(head).unwrap() {
                                             Match::Value(column_value) => {
-                                                // println!("WRITING: {}", column_value);
+                                                println!("WRITING: {}", column_value);
                                                 write!(output, "{}", column_value).expect("Cannot write to output file");
                                             }
                                             Match::Nothing => ()
@@ -97,6 +97,42 @@ fn main() {
                             }
                             None => ()
                         };
+                        for attribute in element.attributes() {
+                            let path = element.tag_name().name().to_string() + "/@" + attribute.name();
+                            println!("Looking for: {}", &path);
+                            match matcher.get(&path) {
+                                Some(column) => {
+                                    // if we parse something again, write out what we have
+                                    if parsed.get(&column.column_name).is_some() {
+                                        parsed = HashSet::default();
+                                        let mut peekable_header = header.iter().peekable();
+                                        while let Some(head) = peekable_header.next() {
+                                            println!("FINDING: {}", head);
+                                            match result.get(head).unwrap() {
+                                                Match::Value(column_value) => {
+                                                    println!("WRITING: {}", column_value);
+                                                    write!(output, "{}", column_value).expect("Cannot write to output file");
+                                                }
+                                                Match::Nothing => ()
+                                            };
+                                            if peekable_header.peek().is_none() {
+                                                write!(output, "{}", TERMINATOR).expect("Cannot write to output file");
+                                            }
+                                            else {
+                                                write!(output, "{}", DELIMITER).expect("Cannot write to output file");
+                                            }
+                                        }
+                                    }
+                                    // println!("{} = {}", column.column_name, element.text().unwrap());
+                                    result.insert(
+                                        column.column_name.to_owned(), 
+                                        Match::Value(attribute.value().to_owned())
+                                    );
+                                    parsed.insert(column.column_name.to_owned());
+                                }
+                                None => ()
+                            };
+                        }
                     }
                 }
                 // println!("HERE!");

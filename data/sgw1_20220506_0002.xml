@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CDR>
-    <sGW-GPRS-Ascii>
+    <sGW-GPRS-Ascii GPRSVersion="1.1">
         <recordType>84</recordType>
         <servedIMSI>123456789012345_2_1</servedIMSI>
         <s-GWAddress>192.168.1.1</s-GWAddress>
@@ -48,7 +48,7 @@
             </ChangeOfCharCondition>
         </listOfTrafficVolumes>
         <recordOpeningTime>2105110816332B0200</recordOpeningTime>
-        <duration>200</duration>
+        <duration unit="seconds">200</duration>
         <causeForRecClosing>0</causeForRecClosing>
         <recordSequenceNumber>9</recordSequenceNumber>
         <nodeID>sgw1</nodeID>
