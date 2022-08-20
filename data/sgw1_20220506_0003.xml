@@ -51,7 +51,7 @@
         <pDNConnectionChargingID>987654321</pDNConnectionChargingID>
         <cPCIoTEPSOptimisationIndicator>0</cPCIoTEPSOptimisationIndicator>
     </sGW-GPRS-Ascii>
-    <sGW-GPRS-Ascii>
+    <sGW-GPRS-Ascii GPRSVersion="1.2">
         <recordType>84</recordType>
         <servedIMSI>123456789012346_3_2</servedIMSI>
         <s-GWAddress>192.168.2.2</s-GWAddress>
@@ -82,7 +82,7 @@
             </ChangeOfCharCondition>
         </listOfTrafficVolumes>
         <recordOpeningTime>2105110817332B0200</recordOpeningTime>
-        <duration>300</duration>
+        <duration unit="seconds">300</duration>
         <causeForRecClosing>0</causeForRecClosing>
         <recordSequenceNumber>9</recordSequenceNumber>
         <nodeID>sgw1</nodeID>
