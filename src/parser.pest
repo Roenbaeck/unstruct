@@ -1,11 +1,11 @@
-block = { "{" ~ (directive | block)* ~ "}" }
+block = { "{" ~ (element | directive | block)* ~ "}" }
 
-// tokens
-COMMENT = _{ "#" ~ (!"\n" ~ ANY)*  }
+// built-in removal 
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
 digit = _{ '0'..'9' }
 column_name = ${ CASED_LETTER ~ (CASED_LETTER | digit | "_" )* }
 xml_name = { "\"" ~ ( "\"\"" | (!"\"" ~ ANY) )* ~ "\"" }
 
+element = { "<" ~ (!">" ~ ANY)* ~ ">" }
 directive = { column_name ~ "=" ~ xml_name }

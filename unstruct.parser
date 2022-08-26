@@ -1,17 +1,19 @@
 
 {
-    servedIMSI = "servedIMSI"
-    servedMSISDN = "servedMSISDN"
-    servedIMEISV = "servedIMEISV"
-    recordOpeningTime = "recordOpeningTime"
-    {
+    <sGW-GPRS-Ascii> {
+        servedIMSI = "servedIMSI"
+        servedMSISDN = "servedMSISDN"
+        servedIMEISV = "servedIMEISV"
+        recordOpeningTime = "recordOpeningTime"
         {
-            changeTime = "changeTime"
-            dataVolumeGPRSUplink = "dataVolumeGPRSUplink"
-            dataVolumeGPRSDownlink = "dataVolumeGPRSDownlink"
+            <ChangeOfCharCondition> {
+                changeTime = "changeTime"
+                dataVolumeGPRSUplink = "dataVolumeGPRSUplink"
+                dataVolumeGPRSDownlink = "dataVolumeGPRSDownlink"
+            }
         }
+        duration = "duration"
+        durationUnit = "duration/@unit"
     }
-    duration = "duration"
-    durationUnit = "duration/@unit"
 }
 
