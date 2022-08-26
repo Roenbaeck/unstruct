@@ -185,67 +185,76 @@ fn record(
 }
 
 fn main() {
-    // read the config containing the mapping between elements and columns
-    let configuration = read_to_string("unstruct.parser").unwrap();
-    let (matcher, header, elements) = parse(&configuration);
-    let mut result: HashMap<String, Match> = HashMap::default();      
-
-    // parse the arguments to get the filename glob pattern
     let args = Args::parse();
     let filename = args.filename;
     let outfile = args.outfile;
+    let parser = args.parser;
     let quiet = args.quiet;
-    if !quiet  {
-        println!("Finding files matching: {}", &filename);
-        println!("Results are stored in: {}", &outfile);
-    }
-    let mut output = File::create(outfile).unwrap();
-    let mut peekable_header = header.iter().peekable();
-    while let Some(head) = peekable_header.next() {
-        write!(output, "{}", head).expect("Cannot write to output file");
-        if peekable_header.peek().is_none() {
-            write!(output, "{}", TERMINATOR).expect("Cannot write to output file");
-        }
-        else {
-            write!(output, "{}", DELIMITER).expect("Cannot write to output file");
-        }
-    }
 
-    // use the glob to find matching files
-    for entry in glob(&filename).expect("Failed to read glob pattern") {
-        match entry {
-            Ok(path) => {
-                if !quiet {
-                    println!("Parsing the file: {:?}", &path.display());
+    // read the config containing the mapping between elements and columns
+    let configuration = read_to_string(parser);
+    match configuration {
+        Ok(config) => {
+            let (matcher, header, elements) = parse(&config);
+            let mut result: HashMap<String, Match> = HashMap::default();      
+        
+            // parse the arguments to get the filename glob pattern
+            if !quiet  {
+                println!("Finding files matching: {}", &filename);
+                println!("Results are stored in: {}", &outfile);
+            }
+            let mut output = File::create(outfile).unwrap();
+            let mut peekable_header = header.iter().peekable();
+            while let Some(head) = peekable_header.next() {
+                write!(output, "{}", head).expect("Cannot write to output file");
+                if peekable_header.peek().is_none() {
+                    write!(output, "{}", TERMINATOR).expect("Cannot write to output file");
                 }
-                let contents = fs::read_to_string(&path).expect("Something went wrong reading the file");
-                let doc = roxmltree::Document::parse(&contents).expect("Could not parse the xml");
-                for head in &header {
-                    result.insert(head.to_owned(), Match::Nothing);
+                else {
+                    write!(output, "{}", DELIMITER).expect("Cannot write to output file");
                 }
-                let mut parsed: HashSet<String> = HashSet::default();
-                let root = doc.root_element();
-                let mut nodes = Vec::default();
-                nodes.push(Rc::new(root));
-
-                traverse(
-                    nodes,                    
-                    &matcher, 
-                    &header, 
-                    &elements,
-                    &mut parsed, 
-                    &mut result,
-                    &mut output, 
-                    false,
-                    false,
-                    1
-                );
-
-            },
-            Err(e) => println!("{:?}", e),
-        }
-    }
-    if !quiet {
-        println!("All done!");
-    }
+            }
+        
+            // use the glob to find matching files
+            for entry in glob(&filename).expect("Failed to read glob pattern") {
+                match entry {
+                    Ok(path) => {
+                        if !quiet {
+                            println!("Parsing the file: {:?}", &path.display());
+                        }
+                        let contents = fs::read_to_string(&path).expect("Something went wrong reading the file");
+                        let doc = roxmltree::Document::parse(&contents).expect("Could not parse the xml");
+                        for head in &header {
+                            result.insert(head.to_owned(), Match::Nothing);
+                        }
+                        let mut parsed: HashSet<String> = HashSet::default();
+                        let root = doc.root_element();
+                        let mut nodes = Vec::default();
+                        nodes.push(Rc::new(root));
+        
+                        traverse(
+                            nodes,                    
+                            &matcher, 
+                            &header, 
+                            &elements,
+                            &mut parsed, 
+                            &mut result,
+                            &mut output, 
+                            false,
+                            false,
+                            1
+                        );
+        
+                    },
+                    Err(e) => println!("{:?}", e),
+                }
+            }
+            if !quiet {
+                println!("All done!");
+            }        
+        }, 
+        Err(_) => {
+            println!("You need to specify an existing parser config file.");
+        }    
+    };
 }
