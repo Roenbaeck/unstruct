@@ -2,7 +2,7 @@
 <CDR>
     <sGW-GPRS-Ascii GPRSVersion="1.2">
         <recordType>84</recordType>
-        <servedIMSI>123456789012345_3_1</servedIMSI>
+        <servedIMSI>123456789012345_4_1</servedIMSI>
         <s-GWAddress>192.168.1.1</s-GWAddress>
         <chargingID>987654321</chargingID>
         <servingNodeAddress>
@@ -31,7 +31,7 @@
             </ChangeOfCharCondition>
         </listOfTrafficVolumes>
         <recordOpeningTime>2105110817332B0200</recordOpeningTime>
-        <!-- <duration unit="seconds">300</duration> -->
+        <duration unit="seconds">300</duration>
         <causeForRecClosing>0</causeForRecClosing>
         <recordSequenceNumber>9</recordSequenceNumber>
         <nodeID>sgw1</nodeID>
@@ -53,7 +53,7 @@
     </sGW-GPRS-Ascii>
     <sGW-GPRS-Ascii GPRSVersion="1.2">
         <recordType>84</recordType>
-        <servedIMSI>123456789012346_3_2</servedIMSI>
+        <servedIMSI>123456789012346_4_2</servedIMSI>
         <s-GWAddress>192.168.2.2</s-GWAddress>
         <chargingID>987654322</chargingID>
         <servingNodeAddress>
@@ -82,7 +82,7 @@
             </ChangeOfCharCondition>
         </listOfTrafficVolumes>
         <recordOpeningTime>2105110817332B0200</recordOpeningTime>
-        <duration unit="seconds">900</duration>
+        <!-- <duration unit="seconds">900</duration> -->
         <causeForRecClosing>0</causeForRecClosing>
         <recordSequenceNumber>9</recordSequenceNumber>
         <nodeID>sgw1</nodeID>

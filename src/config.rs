@@ -1,7 +1,7 @@
 use pest::Parser;
 use pest_derive::Parser;
 use pest::iterators::{Pair, Pairs};
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::{HashMap, HashSet}, hash::Hash};
 
 #[derive(Parser)]
 #[grammar = "parser.pest"] // relative to src
@@ -13,13 +13,28 @@ pub struct Directive {
     pub column_name: String
 }
 
-pub fn block_recurse(remainder: Pairs<Rule>, matcher: &mut HashMap<String, Directive>, header: &mut Vec<String>, level: usize) {
-    for directive_or_block in remainder {
-        match directive_or_block.as_rule() {
+pub fn block_recurse(
+        remainder: Pairs<Rule>,
+        matcher: &mut HashMap<String, Directive>, 
+        header: &mut Vec<String>, 
+        elements: &mut HashSet<String>,
+        level: usize) 
+    {
+    for parsed in remainder {
+        match parsed.as_rule() {
+            Rule::element => {
+                elements.insert({
+                    let element = parsed.as_str().to_owned();
+                    let mut chars = element.chars();
+                    chars.next();
+                    chars.next_back();
+                    chars.as_str().to_owned()
+                });
+            }
             Rule::directive => {
                 let mut column_name: Option<String> = None; 
                 let mut xml_name: Option<String> = None; 
-                for column_or_xml in directive_or_block.into_inner() {
+                for column_or_xml in parsed.into_inner() {
                     match column_or_xml.as_rule() {
                         Rule::column_name => {
                             column_name = Some(column_or_xml.as_str().to_owned());
@@ -48,21 +63,24 @@ pub fn block_recurse(remainder: Pairs<Rule>, matcher: &mut HashMap<String, Direc
                 header.push(column_name.as_ref().unwrap().to_owned());
             }
             Rule::block => {
-                block_recurse(directive_or_block.into_inner(), matcher, header, level + 1);
+                block_recurse(parsed.into_inner(), matcher, header, elements, level + 1);
             }
             _ => {
-                println!("Parsing error: {:?}", directive_or_block);
+                println!("Parsing error: {:?}", parsed);
             }
         }
     }
 }
 
-pub fn parse(configuration: &str) -> (HashMap<String, Directive>, Vec<String>) {
+pub fn parse(configuration: &str) -> (HashMap<String, Directive>, Vec<String>, HashSet<String>) {
     // println!("The configuration is:\n{}", configuration);
     let remainder = UnstructParser::parse(Rule::block, configuration.trim()).expect("Parsing error");
     let mut matcher: HashMap<String, Directive> = HashMap::default();
     let mut header: Vec<String> = Vec::default();
-    block_recurse(remainder, &mut matcher, &mut header, 0);
-    // println!("{:?}", &matcher);
-    (matcher, header)
+    let mut elements: HashSet<String> = HashSet::default();
+    block_recurse(remainder, &mut matcher, &mut header, &mut elements, 1);
+    //println!("matcher: {:?}", &matcher);
+    //println!("header: {:?}", &header);
+    //println!("elements: {:?}", &elements);
+    (matcher, header, elements)
 }
