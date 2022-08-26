@@ -32,7 +32,7 @@ fn traverse(
         nodes: Vec<Rc<Node>>,     
         matcher: &HashMap<String, Directive>, 
         header: &Vec<String>,
-        elements: &HashSet<String>,
+        elements: &HashMap<String, Vec<String>>,
         parsed: &mut HashSet<String>, 
         result: &mut HashMap<String, Match>, 
         output: &mut File, 
@@ -54,7 +54,18 @@ fn traverse(
                 }                    
                 if recording {
                     let mut xml_name = element.tag_name().name().to_string();
-                    let mut xml_value = element.text().unwrap().to_owned();
+                    match elements.get(&xml_name) {
+                        Some(partial_header) => {
+                            for head in partial_header {
+                                result.insert(head.to_owned(), Match::Nothing);
+                            }                
+                        },
+                        None => ()
+                    }
+                    let mut xml_value = match element.text() {
+                        Some(text) => text,
+                        None => ""
+                    }.to_owned();
                     record(&xml_name, &xml_value, matcher, parsed, result, depth);
                     for attribute in element.attributes() {
                         xml_name = element.tag_name().name().to_string() + "/@" + attribute.name();
@@ -83,7 +94,7 @@ fn traverse(
         let mut nodes_to_search = Vec::default();
         for element in nodes {
             if element.is_element() {
-                if elements.contains(&element.tag_name().name().to_string()) {
+                if elements.contains_key(&element.tag_name().name().to_string()) {
                     recording = true;
                     siblings = true;
                     for sibling in element.next_siblings() {
@@ -144,11 +155,6 @@ fn traverse(
             }
         }        
         // ------------------------------------------------------------------------------------------
-        if siblings {
-            for head in header {
-                result.insert(head.to_owned(), Match::Nothing);
-            }
-        }
     } 
 }
 

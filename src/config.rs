@@ -17,19 +17,23 @@ pub fn block_recurse(
         remainder: Pairs<Rule>,
         matcher: &mut HashMap<String, Directive>, 
         header: &mut Vec<String>, 
-        elements: &mut HashSet<String>,
+        elements: &mut HashMap<String, Vec<String>>,
+        current_element: String,
         level: usize) 
     {
+    let mut local_element = current_element.to_owned();
     for parsed in remainder {
         match parsed.as_rule() {
             Rule::element => {
-                elements.insert({
+                let element = {
                     let element = parsed.as_str().to_owned();
                     let mut chars = element.chars();
                     chars.next();
                     chars.next_back();
                     chars.as_str().to_owned()
-                });
+                };
+                elements.insert(element.clone(), Vec::default());
+                local_element = element;
             }
             Rule::directive => {
                 let mut column_name: Option<String> = None; 
@@ -61,9 +65,15 @@ pub fn block_recurse(
                     }
                 );
                 header.push(column_name.as_ref().unwrap().to_owned());
+                match elements.get_mut(&local_element) {
+                    Some(partial_header) => {
+                        partial_header.push(column_name.as_ref().unwrap().to_owned());
+                    },
+                    None => ()
+                }
             }
             Rule::block => {
-                block_recurse(parsed.into_inner(), matcher, header, elements, level + 1);
+                block_recurse(parsed.into_inner(), matcher, header, elements, local_element.to_owned(), level + 1);
             }
             _ => {
                 println!("Parsing error: {:?}", parsed);
@@ -72,15 +82,15 @@ pub fn block_recurse(
     }
 }
 
-pub fn parse(configuration: &str) -> (HashMap<String, Directive>, Vec<String>, HashSet<String>) {
+pub fn parse(configuration: &str) -> (HashMap<String, Directive>, Vec<String>, HashMap<String, Vec<String>>) {
     // println!("The configuration is:\n{}", configuration);
     let remainder = UnstructParser::parse(Rule::block, configuration.trim()).expect("Parsing error");
     let mut matcher: HashMap<String, Directive> = HashMap::default();
     let mut header: Vec<String> = Vec::default();
-    let mut elements: HashSet<String> = HashSet::default();
-    block_recurse(remainder, &mut matcher, &mut header, &mut elements, 1);
-    //println!("matcher: {:?}", &matcher);
-    //println!("header: {:?}", &header);
-    //println!("elements: {:?}", &elements);
+    let mut elements: HashMap<String, Vec<String>> = HashMap::default();
+    block_recurse(remainder, &mut matcher, &mut header, &mut elements, "".to_owned(), 1);
+    println!("matcher: {:?}", &matcher);
+    println!("header: {:?}", &header);
+    println!("elements: {:?}", &elements);
     (matcher, header, elements)
 }
