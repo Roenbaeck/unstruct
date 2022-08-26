@@ -17,6 +17,8 @@ struct Args {
     outfile: String,
     #[clap(short, long, help = "The configuration file specifying the parsing rules", default_value="unstruct.parser")]
     parser: String,
+    #[clap(short, long, help = "If specified the program will not output any text")]
+    quiet: bool,
 }
 
 #[derive(Debug)]
@@ -192,9 +194,11 @@ fn main() {
     let args = Args::parse();
     let filename = args.filename;
     let outfile = args.outfile;
-    println!("Finding files matching: {}", &filename);
-    println!("Results are stored in: {}", &outfile);
-
+    let quiet = args.quiet;
+    if !quiet  {
+        println!("Finding files matching: {}", &filename);
+        println!("Results are stored in: {}", &outfile);
+    }
     let mut output = File::create(outfile).unwrap();
     let mut peekable_header = header.iter().peekable();
     while let Some(head) = peekable_header.next() {
@@ -211,7 +215,9 @@ fn main() {
     for entry in glob(&filename).expect("Failed to read glob pattern") {
         match entry {
             Ok(path) => {
-                println!("Parsing the file: {:?}", &path.display());
+                if !quiet {
+                    println!("Parsing the file: {:?}", &path.display());
+                }
                 let contents = fs::read_to_string(&path).expect("Something went wrong reading the file");
                 let doc = roxmltree::Document::parse(&contents).expect("Could not parse the xml");
                 for head in &header {
@@ -239,6 +245,7 @@ fn main() {
             Err(e) => println!("{:?}", e),
         }
     }
-
-    println!("All done!");
+    if !quiet {
+        println!("All done!");
+    }
 }

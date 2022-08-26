@@ -1,9 +1,10 @@
 # unstruct
-Unstruct is a program that parses simple xml files into text files, suitable for bulk inserts into a relational database.
-It is still in early development. This means it is sensitive to the structure of the parser config file and that the 
-input XML files need to be well formed. If not, you are likely to get undesired results or even program crashes.
+Unstruct is a program that parses simple xml files into text files, suitable for bulk inserts into a 
+relational database. It is still in early development. This means it is sensitive to the structure of 
+the parser config file and that the input XML files need to be well formed. If not, you are likely 
+to get undesired results or even program crashes.
 
-# Configuration
+## Configuration
 This is an example parser configuration:
 ```
 {
@@ -24,7 +25,26 @@ This is an example parser configuration:
     }
 }
 ```
-The brackets indicte the hiearachy in the XML file you intend to parse. The first element you are interested in parsing in this example 
-is `<sGW-GPRS-Ascii>` and it is one level below the root level of the document. Within this element there are some parsing directives 
-on the format `column_name = "xml_element_name"` or `column_name = "xml_element_name/@optional_attribute_name"`. The `column_name` will end up as a header in the file with 
-the results from the parsing. If `xml_element_name` is found...
+The brackets indicte the hiearachy in the XML file you intend to parse. The first element you are interested 
+in parsing in this example  is `<sGW-GPRS-Ascii>` and it is one level below the root level of the document. 
+Within this element there are some parsing directives  on the format `column_name = "xml_element_name"` or
+`column_name = "xml_element_name/@optional_attribute_name"`. The `column_name` will end up as a header in 
+the file with the results from the parsing. 
+
+The elements that are specified literally: `<sGW-GPRS-Ascii>` and `<ChangeOfCharCondition>` are the ones for 
+which you want new rows to be created in the result. If an element `<sGW-GPRS-Ascii>` contains two 
+`<ChangeOfCharCondition>` elements, you will get two rows, where values "above" `<ChangeOfCharCondition>`
+will be reused. 
+
+If the XML file does not contain the attribute `duration/@unit` the header `durationUnit` will still be in 
+the output file, but values will be empty.
+
+## Program switches
+
+| Switch | Description |
+|--------|-------------|
+| `-f, --filename <filename_or_pattern>` | The name of the input xml file or matching files if wildcards are used |
+| `-o, --outfile <filename>` | The name of the text file into which the results of the parsing will be output |
+| `-p, --parser <filename>` | The configuration file specifying the parsing rules [default: "unstruct.parser"] |
+| `-q, --quiet` | If specified the program will not output any text |
+
