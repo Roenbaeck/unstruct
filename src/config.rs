@@ -1,21 +1,17 @@
 use pest::Parser;
 use pest_derive::Parser;
-use pest::iterators::{Pair, Pairs};
-use std::{collections::{HashMap, HashSet}, hash::Hash};
+use pest::iterators::{Pairs};
+use std::{collections::{HashMap}, hash::Hash};
+
+pub const LEVEL: &str = "|";
 
 #[derive(Parser)]
-#[grammar = "parser.pest"] // relative to src
+#[grammar = "parser.pest"] // path relative to src
 struct UnstructParser;
-
-#[derive(Debug)]
-pub struct Directive {
-    pub level: usize, 
-    pub column_name: String
-}
 
 pub fn block_recurse(
         remainder: Pairs<Rule>,
-        matcher: &mut HashMap<String, Directive>, 
+        matcher: &mut HashMap<String, String>, 
         header: &mut Vec<String>, 
         elements: &mut HashMap<String, Vec<String>>,
         current_element: String,
@@ -31,7 +27,7 @@ pub fn block_recurse(
                     chars.next();
                     chars.next_back();
                     chars.as_str().to_owned()
-                };
+                } + LEVEL + &level.to_string();
                 elements.insert(element.clone(), Vec::default());
                 local_element = element;
             }
@@ -58,11 +54,8 @@ pub fn block_recurse(
                         chars.next();
                         chars.next_back();
                         chars.as_str().to_owned()
-                    }, 
-                    Directive {
-                        level, 
-                        column_name: column_name.as_ref().unwrap().to_owned()
-                    }
+                    } + LEVEL + &level.to_string(), 
+                    column_name.as_ref().unwrap().to_owned()
                 );
                 header.push(column_name.as_ref().unwrap().to_owned());
                 match elements.get_mut(&local_element) {
@@ -82,15 +75,15 @@ pub fn block_recurse(
     }
 }
 
-pub fn parse(configuration: &str) -> (HashMap<String, Directive>, Vec<String>, HashMap<String, Vec<String>>) {
+pub fn parse(configuration: &str) -> (HashMap<String, String>, Vec<String>, HashMap<String, Vec<String>>) {
     // println!("The configuration is:\n{}", configuration);
     let remainder = UnstructParser::parse(Rule::block, configuration.trim()).expect("Parsing error");
-    let mut matcher: HashMap<String, Directive> = HashMap::default();
+    let mut matcher: HashMap<String, String> = HashMap::default();
     let mut header: Vec<String> = Vec::default();
     let mut elements: HashMap<String, Vec<String>> = HashMap::default();
     block_recurse(remainder, &mut matcher, &mut header, &mut elements, "".to_owned(), 1);
-    println!("matcher: {:?}", &matcher);
-    println!("header: {:?}", &header);
-    println!("elements: {:?}", &elements);
+    // println!("matcher: {:?}", &matcher);
+    // println!("header: {:?}", &header);
+    // println!("elements: {:?}", &elements);
     (matcher, header, elements)
 }
