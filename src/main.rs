@@ -8,16 +8,25 @@ use unstruct::config::{parse, LEVEL};
 use std::fs::{File, read_to_string};
 use std::io::Write;
 
+/// Unstruct is a program that parses simple xml files into text files,
+/// suitable for bulk inserts into a relational database
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = "Unstruct is a program that parses simple xml files into text files, suitable for bulk inserts into a relational database.")]
+#[clap(author, version)]
 struct Args {
-    #[clap(short, long, help = "The name of the input xml file or matching files if wildcards are used")]
+    /// The name of the input xml file or matching files if wildcards are used
+    #[clap(short, long)]
     filename: String,
-    #[clap(short, long, help = "The name of the text file into which the results of the parsing will be output")]
+
+    /// The name of the text file into which the results of the parsing will be output
+    #[clap(short, long)]
     outfile: String,
-    #[clap(short, long, help = "The configuration file specifying the parsing rules", default_value="unstruct.parser")]
+
+    /// The configuration file specifying the parsing rules
+    #[clap(short, long, default_value = "unstruct.parser")]
     parser: String,
-    #[clap(short, long, help = "If specified the program will not output any text")]
+
+    /// Do not write any info to output
+    #[clap(short, long)]
     quiet: bool,
 }
 
@@ -185,11 +194,12 @@ fn record(
 }
 
 fn main() {
-    let args = Args::parse();
-    let filename = args.filename;
-    let outfile = args.outfile;
-    let parser = args.parser;
-    let quiet = args.quiet;
+    let Args {
+        filename,
+        outfile,
+        parser,
+        quiet,
+    } = Args::parse();
 
     // read the config containing the mapping between elements and columns
     let configuration = read_to_string(parser);
