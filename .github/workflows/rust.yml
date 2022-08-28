@@ -1,7 +1,9 @@
+# Workflow made by Nicolas Vanhoren, https://github.com/nicolas-van/rust-cross-compile-example
 name: Rust
 
 on:
   push:
+  pull_request:
 
 env:
   CARGO_TERM_COLOR: always
@@ -52,12 +54,12 @@ jobs:
             OS: ubuntu-latest
           - TARGET: x86_64-apple-darwin # tested on a mac, is not properly signed so there are security warnings
             OS: macos-latest
-          - TARGET: x86_64-pc-windows-gnu # tested on a windows machine
+          - TARGET: x86_64-pc-windows-msvc # tested on a windows machine
             OS: windows-latest
     needs: test
     runs-on: ${{ matrix.OS }}
     env:
-      NAME: unstruct
+      NAME: unstruct # change with the name of your project
       TARGET: ${{ matrix.TARGET }}
       OS: ${{ matrix.OS }}
     steps:
