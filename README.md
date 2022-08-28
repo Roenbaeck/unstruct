@@ -42,7 +42,7 @@ which you want new rows to be created in the result. If an element `<sGW-GPRS-As
 will be reused. 
 
 If the XML file does not contain the attribute `duration/@unit` the header `durationUnit` will still be in 
-the output file, but values will be empty.
+the output file, but values will be empty. Look at the file `result.txt` for example output.
 
 ## Program switches
 
