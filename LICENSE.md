@@ -22,7 +22,7 @@ SOFTWARE.
 
 -------
 
-The workflow providing GitHub actions (rust.yml) has the following license: 
+The workflow providing GitHub actions `rust.yml` has the following license: 
 
 MIT License
 
