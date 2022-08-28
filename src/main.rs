@@ -54,30 +54,19 @@ fn traverse(
     let mut recording = recording;
     let mut siblings = siblings;
     if siblings {
-        for element in nodes {
+        for element in nodes.into_iter().filter(|el| el.is_element()) {
             let mut nodes_to_search = Vec::default();
-            if element.is_element() {
                 if element.has_children() {
                     siblings = false;
-                    for child in element.children() {
-                        nodes_to_search.push(Rc::new(child));
-                    }
+                    nodes_to_search.extend(element.children().map(Rc::new));
                 }                    
                 if recording {
                     let mut xml_name = element.tag_name().name().to_string();
-                    let qualified_element_name = xml_name.to_owned() + LEVEL + &depth.to_string();
-                    match elements.get(&qualified_element_name) {
-                        Some(partial_header) => {
-                            for head in partial_header {
-                                result.insert(head.to_owned(), Match::Nothing);
-                            }                
-                        },
-                        None => ()
+                    let qualified_element_name = format!("{}{}{}", xml_name, LEVEL, depth);
+                    if let Some(partial_header) = elements.get(&qualified_element_name) {
+                        result.extend(partial_header.iter().map(|head| (head.to_owned(), Match::Nothing)));
                     }
-                    let mut xml_value = match element.text() {
-                        Some(text) => text,
-                        None => ""
-                    }.to_owned();
+                    let mut xml_value = element.text().unwrap_or("").to_owned();
                     record(&xml_name, &xml_value, matcher, parsed, result, depth);
                     for attribute in element.attributes() {
                         xml_name = element.tag_name().name().to_string() + "/@" + attribute.name();
@@ -99,28 +88,20 @@ fn traverse(
                         if siblings { depth } else { depth + 1 }
                     );
                 }
-            }
         }
     }
     else {
         let mut nodes_to_search = Vec::default();
-        for element in nodes {
-            if element.is_element() {
-                let qualified_element_name = element.tag_name().name().to_string() + LEVEL + &depth.to_string();
+        for element in nodes.into_iter().filter(|el| el.is_element()) {
+                let qualified_element_name = format!("{}{}{}", element.tag_name().name(), LEVEL, depth);
                 if elements.contains_key(&qualified_element_name) {
                     recording = true;
                     siblings = true;
-                    for sibling in element.next_siblings() {
-                        nodes_to_search.push(Rc::new(sibling));
-                    }
+                    nodes_to_search.extend(element.next_siblings().map(Rc::new));
                     break;
                 }
-                else {
-                    if element.has_children() {
-                        for child in element.children() {
-                            nodes_to_search.push(Rc::new(child));
-                        }
-                    }                    
+                else if element.has_children() {
+                    nodes_to_search.extend(element.children().map(Rc::new));
                 }
                 if recording {
                     let mut xml_name = element.tag_name().name().to_string();
@@ -132,7 +113,6 @@ fn traverse(
                         record(&xml_name, &xml_value, matcher, parsed, result, depth);
                     }    
                 }
-            }
         }
         if !nodes_to_search.is_empty() {
             traverse(
@@ -154,12 +134,9 @@ fn traverse(
         // ------------------------------------------------------------------------------------------
         let mut peekable_header = header.iter().peekable();
         while let Some(head) = peekable_header.next() {
-            match result.get(head).unwrap() {
-                Match::Value(column_value) => {
-                    write!(output, "{}", column_value).expect("Cannot write to output file");
-                }
-                Match::Nothing => ()
-            };
+            if let Some(Match::Value(column_value)) = result.get(head) {
+                write!(output, "{}", column_value).expect("Cannot write to output file");
+            }
             if peekable_header.peek().is_none() {
                 write!(output, "{}", TERMINATOR).expect("Cannot write to output file");
             }
@@ -179,18 +156,12 @@ fn record(
         result: &mut HashMap<String, Match>, 
         depth: usize
     ) {
-    let element = xml_name.to_owned() + LEVEL + &depth.to_string();
+    let element = format!("{}{}{}", xml_name, LEVEL, depth);
     // println!("Looking for: {}", &element);
-    match matcher.get(&element) {
-        Some(column) => {
-            result.insert(
-                column.to_owned(), 
-                Match::Value(xml_value.to_owned())
-            );
-            parsed.insert(column.to_owned());
-        }
-        None => ()
-    };
+    if let Some(column) = matcher.get(&element) {
+        result.insert(column.to_owned(), Match::Value(xml_value.to_owned()));
+        parsed.insert(column.to_owned());
+    }
 }
 
 fn main() {
@@ -234,13 +205,11 @@ fn main() {
                         }
                         let contents = fs::read_to_string(&path).expect("Something went wrong reading the file");
                         let doc = roxmltree::Document::parse(&contents).expect("Could not parse the xml");
-                        for head in &header {
-                            result.insert(head.to_owned(), Match::Nothing);
-                        }
+                        result.extend(header.iter().map(|head| (head.to_owned(), Match::Nothing)));
+
                         let mut parsed: HashSet<String> = HashSet::default();
                         let root = doc.root_element();
-                        let mut nodes = Vec::default();
-                        nodes.push(Rc::new(root));
+                        let nodes = vec![Rc::new(root)];
         
                         traverse(
                             nodes,                    

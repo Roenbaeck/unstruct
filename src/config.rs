@@ -17,17 +17,16 @@ pub fn block_recurse(
         current_element: String,
         level: usize) 
     {
-    let mut local_element = current_element.to_owned();
+    let mut local_element = current_element;
     for parsed in remainder {
         match parsed.as_rule() {
             Rule::element => {
                 let element = {
-                    let element = parsed.as_str().to_owned();
-                    let mut chars = element.chars();
-                    chars.next();
-                    chars.next_back();
-                    chars.as_str().to_owned()
-                } + LEVEL + &level.to_string();
+                    let element = parsed.as_str();
+                    let one_before_last = element.len() - 1;
+                    let trimmed = &element[1..one_before_last];
+                    format!("{}{}{}", trimmed, LEVEL, level)
+                };
                 elements.insert(element.clone(), Vec::default());
                 local_element = element;
             }
@@ -50,19 +49,16 @@ pub fn block_recurse(
                 // println!("{} = {}", column_name.as_ref().unwrap(), xml_name.as_ref().unwrap());
                 matcher.insert(
                     {
-                        let mut chars = xml_name.as_ref().unwrap().chars();
-                        chars.next();
-                        chars.next_back();
-                        chars.as_str().to_owned()
-                    } + LEVEL + &level.to_string(), 
+                        let el = xml_name.as_ref().unwrap();
+                        let one_before_last = el.len();
+                        let trimmed = &el[1..one_before_last];
+                        format!("{}{}{}", trimmed, LEVEL, level)
+                    }, 
                     column_name.as_ref().unwrap().to_owned()
                 );
                 header.push(column_name.as_ref().unwrap().to_owned());
-                match elements.get_mut(&local_element) {
-                    Some(partial_header) => {
-                        partial_header.push(column_name.as_ref().unwrap().to_owned());
-                    },
-                    None => ()
+                if let Some(partial_header) = elements.get_mut(&local_element) {
+                    partial_header.push(column_name.as_ref().unwrap().to_owned());
                 }
             }
             Rule::block => {
