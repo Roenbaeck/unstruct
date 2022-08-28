@@ -4,6 +4,11 @@ relational database. It is still in early development. This means it is sensitiv
 the parser config file and that the input XML files need to be well formed. If not, you are likely 
 to get undesired results or even program crashes.
 
+It is written in Rust and the goal is to be more performant than loading XML into the database and 
+doing the parsing there. One example of a situation where you need fast parsing of XML is when you 
+have CDR (call detail record) files in XML format, since these can become abundant very quickly. 
+The files currently used for testing are mockup CDR files, found in the data subfolder.
+
 ## Configuration
 This is an example parser configuration:
 ```
@@ -48,3 +53,9 @@ the output file, but values will be empty.
 | `-p, --parser <filename>` | The configuration file specifying the parsing rules [default: "unstruct.parser"] |
 | `-q, --quiet` | If specified the program will not output any text |
 
+## Help
+Feel free to fork and help out! We need help with at least:
+
+* Testing different XML files (very early stages of development).
+* Making it more robust (there’s practically no error handling).
+* Improving it in terms of performance and functionality.
