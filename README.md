@@ -7,7 +7,10 @@ to get undesired results or even program crashes.
 It is written in Rust and the goal is to be more performant than loading XML into the database and 
 doing the parsing there. One example of a situation where you need fast parsing of XML is when you 
 have CDR (call detail record) files in XML format, since these can become abundant very quickly. 
-The files currently used for testing are mockup CDR files, found in the data subfolder.
+The files currently used for testing are mockup CDR files, found in the data subfolder. 
+
+When testing version 0.1.3 on a recent MacBook Pro, unstruct was able to parse 10 000 CDR XML files 
+per second.
 
 ## Configuration
 This is an example parser configuration:

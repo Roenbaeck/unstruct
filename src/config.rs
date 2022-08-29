@@ -54,8 +54,8 @@ pub fn block_recurse(
                 matcher.insert(
                     {
                         let el = xml_name.as_ref().unwrap();
-                        let one_before_last = el.len();
-                        let trimmed = &el[1..one_before_last - 1];
+                        let one_before_last = el.len() - 1;
+                        let trimmed = &el[1..one_before_last];
                         format!("{}{}{}", trimmed, LEVEL, level)
                     },
                     column_name.as_ref().unwrap().to_owned(),
