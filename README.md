@@ -62,3 +62,4 @@ Feel free to fork and help out! We need help with at least:
 * Testing different XML files (very early stages of development).
 * Making it more robust (there’s practically no error handling).
 * Improving it in terms of performance and functionality.
+* Document the code.
