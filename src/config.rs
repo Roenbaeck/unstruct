@@ -14,10 +14,14 @@ pub fn block_recurse(
     matcher: &mut HashMap<String, String>,
     header: &mut Vec<String>,
     elements: &mut HashMap<String, Vec<String>>,
+    levels: &mut Vec<usize>,
     current_element: String,
     level: usize,
 ) {
     let mut local_element = current_element;
+    while levels.len() < level {
+        levels.push(0);
+    }
     for parsed in remainder {
         match parsed.as_rule() {
             Rule::element => {
@@ -51,12 +55,13 @@ pub fn block_recurse(
                     {
                         let el = xml_name.as_ref().unwrap();
                         let one_before_last = el.len();
-                        let trimmed = &el[1..one_before_last];
+                        let trimmed = &el[1..one_before_last - 1];
                         format!("{}{}{}", trimmed, LEVEL, level)
                     },
                     column_name.as_ref().unwrap().to_owned(),
                 );
                 header.push(column_name.as_ref().unwrap().to_owned());
+                levels[level-1] = levels[level-1] + 1;
                 if let Some(partial_header) = elements.get_mut(&local_element) {
                     partial_header.push(column_name.as_ref().unwrap().to_owned());
                 }
@@ -67,6 +72,7 @@ pub fn block_recurse(
                     matcher,
                     header,
                     elements,
+                    levels,
                     local_element.to_owned(),
                     level + 1,
                 );
@@ -84,6 +90,7 @@ pub fn parse(
     HashMap<String, String>,
     Vec<String>,
     HashMap<String, Vec<String>>,
+    Vec<usize>,
 ) {
     // println!("The configuration is:\n{}", configuration);
     let remainder =
@@ -91,16 +98,19 @@ pub fn parse(
     let mut matcher: HashMap<String, String> = HashMap::default();
     let mut header: Vec<String> = Vec::default();
     let mut elements: HashMap<String, Vec<String>> = HashMap::default();
+    let mut levels: Vec<usize> = Vec::default();
     block_recurse(
         remainder,
         &mut matcher,
         &mut header,
         &mut elements,
+        &mut levels,
         "".to_owned(),
         1,
     );
     // println!("matcher: {:?}", &matcher);
     // println!("header: {:?}", &header);
     // println!("elements: {:?}", &elements);
-    (matcher, header, elements)
+    // println!("levels: {:?}", &levels);
+    (matcher, header, elements, levels)
 }

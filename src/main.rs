@@ -44,6 +44,7 @@ fn traverse(
     matcher: &HashMap<String, String>,
     header: &Vec<String>,
     elements: &HashMap<String, Vec<String>>,
+    levels: &Vec<usize>,
     parsed: &mut HashSet<String>,
     result: &mut HashMap<String, Match>,
     output: &mut File,
@@ -51,8 +52,12 @@ fn traverse(
     siblings: bool,
     depth: usize,
 ) {
+    if depth > levels.len() {
+        return;
+    }
     let mut recording = recording;
     let mut siblings = siblings;
+    let mut found: usize = 0;
     if siblings {
         for element in nodes.into_iter().filter(|el| el.is_element()) {
             let mut nodes_to_search = Vec::default();
@@ -60,7 +65,7 @@ fn traverse(
                 siblings = false;
                 nodes_to_search.extend(element.children().map(Rc::new));
             }
-            if recording {
+            if recording && found < levels[depth-1] {
                 let mut xml_name = element.tag_name().name().to_string();
                 let qualified_element_name = format!("{}{}{}", xml_name, LEVEL, depth);
                 if let Some(partial_header) = elements.get(&qualified_element_name) {
@@ -71,12 +76,13 @@ fn traverse(
                     );
                 }
                 let mut xml_value = element.text().unwrap_or("").to_owned();
-                record(&xml_name, &xml_value, matcher, parsed, result, depth);
+                found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
                 for attribute in element.attributes() {
                     xml_name = element.tag_name().name().to_string() + "/@" + attribute.name();
                     xml_value = attribute.value().to_owned();
-                    record(&xml_name, &xml_value, matcher, parsed, result, depth);
+                    found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
                 }
+                // println!("Number found: {}", found);
             }
             if !nodes_to_search.is_empty() {
                 traverse(
@@ -84,6 +90,7 @@ fn traverse(
                     matcher,
                     header,
                     elements,
+                    levels,
                     parsed,
                     result,
                     output,
@@ -105,15 +112,16 @@ fn traverse(
             } else if element.has_children() {
                 nodes_to_search.extend(element.children().map(Rc::new));
             }
-            if recording {
+            if recording && found < levels[depth-1] {
                 let mut xml_name = element.tag_name().name().to_string();
                 let mut xml_value = element.text().unwrap().to_owned();
-                record(&xml_name, &xml_value, matcher, parsed, result, depth);
+                found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
                 for attribute in element.attributes() {
                     xml_name = element.tag_name().name().to_string() + "/@" + attribute.name();
                     xml_value = attribute.value().to_owned();
-                    record(&xml_name, &xml_value, matcher, parsed, result, depth);
+                    found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
                 }
+                // println!("Number found: {}", found);
             }
         }
         if !nodes_to_search.is_empty() {
@@ -122,6 +130,7 @@ fn traverse(
                 matcher,
                 header,
                 elements,
+                levels,
                 parsed,
                 result,
                 output,
@@ -156,13 +165,17 @@ fn record(
     parsed: &mut HashSet<String>,
     result: &mut HashMap<String, Match>,
     depth: usize,
-) {
+) -> usize {
     let element = format!("{}{}{}", xml_name, LEVEL, depth);
+    let mut found: usize = 0;
     // println!("Looking for: {}", &element);
     if let Some(column) = matcher.get(&element) {
+        // println!("Found: {}", &element);
         result.insert(column.to_owned(), Match::Value(xml_value.to_owned()));
         parsed.insert(column.to_owned());
+        found = 1;
     }
+    found
 }
 
 fn main() {
@@ -177,7 +190,7 @@ fn main() {
     let configuration = read_to_string(parser);
     match configuration {
         Ok(config) => {
-            let (matcher, header, elements) = parse(&config);
+            let (matcher, header, elements, levels) = parse(&config);
             let mut result: HashMap<String, Match> = HashMap::default();
 
             // parse the arguments to get the filename glob pattern
@@ -218,6 +231,7 @@ fn main() {
                             &matcher,
                             &header,
                             &elements,
+                            &levels,
                             &mut parsed,
                             &mut result,
                             &mut output,
