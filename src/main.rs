@@ -65,7 +65,7 @@ fn traverse(
                 siblings = false;
                 nodes_to_search.extend(element.children().map(Rc::new));
             }
-            if recording && found < levels[depth-1] {
+            if recording {
                 let mut xml_name = element.tag_name().name().to_string();
                 let qualified_element_name = format!("{}{}{}", xml_name, LEVEL, depth);
                 if let Some(partial_header) = elements.get(&qualified_element_name) {
@@ -75,14 +75,16 @@ fn traverse(
                             .map(|head| (head.to_owned(), Match::Nothing)),
                     );
                 }
-                let mut xml_value = element.text().unwrap_or("").to_owned();
-                found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
-                for attribute in element.attributes() {
-                    xml_name = element.tag_name().name().to_string() + "/@" + attribute.name();
-                    xml_value = attribute.value().to_owned();
+                if found < levels[depth-1] {
+                    let mut xml_value = element.text().unwrap_or("").to_owned();
                     found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
+                    for attribute in element.attributes() {
+                        xml_name = element.tag_name().name().to_string() + "/@" + attribute.name();
+                        xml_value = attribute.value().to_owned();
+                        found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
+                    }
+                    // println!("Number found: {}", found);
                 }
-                // println!("Number found: {}", found);
             }
             if !nodes_to_search.is_empty() {
                 traverse(
