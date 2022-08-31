@@ -1,0 +1,18 @@
+
+{
+    {
+        {
+            {
+                {
+                    {
+                        GemeenteIdentificatie = "selecties-extract:GemeenteIdentificatie"
+                    }
+                }
+            }
+        }
+    }
+    <sl:standBestand> {
+        dataset = "sl:dataset"
+    }
+}
+

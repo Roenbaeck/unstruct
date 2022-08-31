@@ -7,7 +7,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'unstruct'",
+            "name": "Debug CDR executable 'unstruct'",
             "cargo": {
                 "args": [
                     "build",
@@ -19,7 +19,25 @@
                     "kind": "bin"
                 }
             },
-            "args": ["--filename", "data/*.xml", "--outfile", "result.txt"],
+            "args": ["--filename", "example_cdr/*.xml", "--outfile", "result.txt", "--parser", "example_cdr/cdr.parser"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug BAG executable 'unstruct'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=unstruct",
+                    "--package=unstruct"
+                ],
+                "filter": {
+                    "name": "unstruct",
+                    "kind": "bin"
+                }
+            },
+            "args": ["--filename", "example_bag/*.xml", "--outfile", "result.txt", "--parser", "example_bag/bag.parser"],
             "cwd": "${workspaceFolder}"
         },
         {

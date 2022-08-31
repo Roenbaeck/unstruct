@@ -45,6 +45,7 @@ fn traverse(
     header: &Vec<String>,
     elements: &HashMap<String, Vec<String>>,
     levels: &Vec<usize>,
+    namespaces: &HashMap<String, String>,
     parsed: &mut HashSet<String>,
     result: &mut HashMap<String, Match>,
     output: &mut File,
@@ -64,9 +65,16 @@ fn traverse(
             if element.has_children() {
                 siblings = false;
                 nodes_to_search.extend(element.children().map(Rc::new));
-            }
+            }  
             if recording {
                 let mut xml_name = element.tag_name().name().to_string();
+                let schema_name = element.tag_name().namespace();
+                if schema_name.is_some() {
+                    let namespace = namespaces.get(schema_name.unwrap());
+                    if namespace.is_some() {
+                        xml_name = format!("{}:{}", namespace.unwrap(), xml_name);
+                    }
+                }
                 let qualified_element_name = format!("{}{}{}", xml_name, LEVEL, depth);
                 if let Some(partial_header) = elements.get(&qualified_element_name) {
                     result.extend(
@@ -79,13 +87,13 @@ fn traverse(
                     let mut xml_value = element.text().unwrap_or("").to_owned();
                     found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
                     for attribute in element.attributes() {
-                        xml_name = element.tag_name().name().to_string() + "/@" + attribute.name();
+                        xml_name = xml_name + "/@" + attribute.name();
                         xml_value = attribute.value().to_owned();
                         found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
                     }
                     // println!("Number found: {}", found);
                 }
-            }
+            } 
             if !nodes_to_search.is_empty() {
                 traverse(
                     nodes_to_search,
@@ -93,6 +101,7 @@ fn traverse(
                     header,
                     elements,
                     levels,
+                    namespaces,
                     parsed,
                     result,
                     output,
@@ -105,26 +114,49 @@ fn traverse(
     } else {
         let mut nodes_to_search = Vec::default();
         for element in nodes.into_iter().filter(|el| el.is_element()) {
-            let qualified_element_name = format!("{}{}{}", element.tag_name().name(), LEVEL, depth);
+            let mut xml_name = element.tag_name().name().to_string();
+            let schema_name = element.tag_name().namespace();
+            if schema_name.is_some() {
+                let namespace = namespaces.get(schema_name.unwrap());
+                if namespace.is_some() {
+                    xml_name = format!("{}:{}", namespace.unwrap(), xml_name);
+                }
+            }
+        let qualified_element_name = format!("{}{}{}", xml_name, LEVEL, depth);
             if elements.contains_key(&qualified_element_name) {
                 recording = true;
-                siblings = true;
-                nodes_to_search.extend(element.next_siblings().map(Rc::new));
+                let mut siblings_to_search = Vec::default();
+                siblings_to_search.extend(element.next_siblings().filter(|el| el.has_tag_name(element.tag_name())).map(Rc::new));
+                if !siblings_to_search.is_empty() {
+                    traverse(
+                        siblings_to_search,
+                        matcher,
+                        header,
+                        elements,
+                        levels,
+                        namespaces,
+                        parsed,
+                        result,
+                        output,
+                        recording,
+                        true,
+                        depth,
+                    );
+                }
                 break;
             } else if element.has_children() {
                 nodes_to_search.extend(element.children().map(Rc::new));
-            }
+            }  
             if recording && found < levels[depth-1] {
-                let mut xml_name = element.tag_name().name().to_string();
-                let mut xml_value = element.text().unwrap().to_owned();
+                let mut xml_value = element.text().unwrap_or("").to_owned();
                 found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
                 for attribute in element.attributes() {
-                    xml_name = element.tag_name().name().to_string() + "/@" + attribute.name();
+                    xml_name = xml_name + "/@" + attribute.name();
                     xml_value = attribute.value().to_owned();
                     found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
                 }
-                // println!("Number found: {}", found);
-            }
+                // println!("Number found: {}", found);    
+            } 
         }
         if !nodes_to_search.is_empty() {
             traverse(
@@ -133,12 +165,13 @@ fn traverse(
                 header,
                 elements,
                 levels,
+                namespaces,
                 parsed,
                 result,
                 output,
                 recording,
                 siblings,
-                if siblings { depth } else { depth + 1 },
+                depth + 1,
             );
         }
     }
@@ -172,7 +205,7 @@ fn record(
     let mut found: usize = 0;
     // println!("Looking for: {}", &element);
     if let Some(column) = matcher.get(&element) {
-        // println!("Found: {}", &element);
+        //println!("Found: {} = {}", &element, xml_value);
         result.insert(column.to_owned(), Match::Value(xml_value.to_owned()));
         parsed.insert(column.to_owned());
         found = 1;
@@ -226,6 +259,16 @@ fn main() {
 
                         let mut parsed: HashSet<String> = HashSet::default();
                         let root = doc.root_element();
+                        let mut namespaces: HashMap<String, String> = HashMap::default();
+                        for namespace in root.namespaces() {
+                            match namespace.name() {
+                                Some(name) => {
+                                    namespaces.insert(namespace.uri().to_owned(), name.to_owned());
+                                },
+                                None => ()
+                            };
+                        }
+                        //println!("namespaces: {:?}", &namespaces);
                         let nodes = vec![Rc::new(root)];
 
                         traverse(
@@ -234,6 +277,7 @@ fn main() {
                             &header,
                             &elements,
                             &levels,
+                            &namespaces,
                             &mut parsed,
                             &mut result,
                             &mut output,
