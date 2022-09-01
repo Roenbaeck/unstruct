@@ -19,6 +19,8 @@ pub fn block_recurse(
     level: usize,
 ) {
     let mut local_element = current_element;
+    // println!("Level: {}", level);
+    // println!("Remainder: {:?}", remainder);
     while levels.len() < level {
         levels.push(0);
     }
@@ -108,9 +110,9 @@ pub fn parse(
         "".to_owned(),
         1,
     );
-    //println!("matcher: {:?}", &matcher);
-    //println!("header: {:?}", &header);
-    //println!("elements: {:?}", &elements);
-    //println!("levels: {:?}", &levels);
+    // println!("matcher: {:?}", &matcher);
+    // println!("header: {:?}", &header);
+    // println!("elements: {:?}", &elements);
+    // println!("levels: {:?}", &levels);
     (matcher, header, elements, levels)
 }

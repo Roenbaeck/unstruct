@@ -19,7 +19,7 @@
                     "kind": "bin"
                 }
             },
-            "args": ["--filename", "example_cdr/*.xml", "--outfile", "result.txt", "--parser", "example_cdr/cdr.parser"],
+            "args": ["--filename", "example_cdr/*.xml", "--outfile", "example_cdr/result.txt", "--parser", "example_cdr/cdr.parser"],
             "cwd": "${workspaceFolder}"
         },
         {
@@ -37,7 +37,25 @@
                     "kind": "bin"
                 }
             },
-            "args": ["--filename", "example_bag/*.xml", "--outfile", "result.txt", "--parser", "example_bag/bag.parser"],
+            "args": ["--filename", "example_bag/*.xml", "--outfile", "example_bag/result.txt", "--parser", "example_bag/bag.parser"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug FTP executable 'unstruct'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=unstruct",
+                    "--package=unstruct"
+                ],
+                "filter": {
+                    "name": "unstruct",
+                    "kind": "bin"
+                }
+            },
+            "args": ["--filename", "example_ftp/*.xml", "--outfile", "example_ftp/result.txt", "--parser", "example_ftp/ftp.parser"],
             "cwd": "${workspaceFolder}"
         },
         {

@@ -122,7 +122,7 @@ fn traverse(
                     xml_name = format!("{}:{}", namespace.unwrap(), xml_name);
                 }
             }
-        let qualified_element_name = format!("{}{}{}", xml_name, LEVEL, depth);
+            let qualified_element_name = format!("{}{}{}", xml_name, LEVEL, depth);
             if elements.contains_key(&qualified_element_name) {
                 recording = true;
                 let mut siblings_to_search = Vec::default();

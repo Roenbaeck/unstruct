@@ -1,0 +1,10 @@
+
+{
+    start = "session/@start"
+    <download> {
+        filename = "filename/@value"
+        destination = "destination/@value"
+        result = "result/@success"
+    }
+}
+
