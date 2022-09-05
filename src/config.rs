@@ -48,7 +48,7 @@ pub fn block_recurse(
                             xml_name = Some(column_or_xml.as_str().to_owned());
                         }
                         _ => {
-                            println!("Parsing error: {:?}", column_or_xml);
+                            println!("The directive is malformed: {:?}", column_or_xml);
                         }
                     }
                 }
@@ -80,7 +80,8 @@ pub fn block_recurse(
                 );
             }
             _ => {
-                println!("Parsing error: {:?}", parsed);
+                println!("No parsing rule matches: {:?}", parsed);
+                std::process::exit(1);
             }
         }
     }
@@ -95,24 +96,30 @@ pub fn parse(
     Vec<usize>,
 ) {
     // println!("The configuration is:\n{}", configuration);
-    let remainder =
-        UnstructParser::parse(Rule::block, configuration.trim()).expect("Parsing error");
-    let mut matcher: HashMap<String, String> = HashMap::default();
-    let mut header: Vec<String> = Vec::default();
-    let mut elements: HashMap<String, Vec<String>> = HashMap::default();
-    let mut levels: Vec<usize> = Vec::default();
-    block_recurse(
-        remainder,
-        &mut matcher,
-        &mut header,
-        &mut elements,
-        &mut levels,
-        "".to_owned(),
-        1,
-    );
-    // println!("matcher: {:?}", &matcher);
-    // println!("header: {:?}", &header);
-    // println!("elements: {:?}", &elements);
-    // println!("levels: {:?}", &levels);
-    (matcher, header, elements, levels)
+    match UnstructParser::parse(Rule::config, configuration.trim()) {
+        Result::Ok(mut remainder) => {
+            let mut matcher: HashMap<String, String> = HashMap::default();
+            let mut header: Vec<String> = Vec::default();
+            let mut elements: HashMap<String, Vec<String>> = HashMap::default();
+            let mut levels: Vec<usize> = Vec::default();
+            block_recurse(
+                remainder.next().unwrap().into_inner(),
+                &mut matcher,
+                &mut header,
+                &mut elements,
+                &mut levels,
+                "".to_owned(),
+                1,
+            );
+            // println!("matcher: {:?}", &matcher);
+            // println!("header: {:?}", &header);
+            // println!("elements: {:?}", &elements);
+            // println!("levels: {:?}", &levels);
+            (matcher, header, elements, levels)        
+        }, 
+        Result::Err(error) => {
+            println!("Could not parse the config file: {:?}", error);
+            std::process::exit(1);
+        }
+    }
 }

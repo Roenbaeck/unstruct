@@ -53,6 +53,7 @@ fn traverse(
     siblings: bool,
     depth: usize,
 ) {
+    // println!("Parsing depth: {}", depth);
     if depth > levels.len() {
         return;
     }
@@ -87,9 +88,9 @@ fn traverse(
                     let mut xml_value = element.text().unwrap_or("").to_owned();
                     found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
                     for attribute in element.attributes() {
-                        xml_name = xml_name + "/@" + attribute.name();
+                        let xml_attribute = format!("{}{}{}", xml_name, "/@", attribute.name());
                         xml_value = attribute.value().to_owned();
-                        found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
+                        found = found + record(&xml_attribute, &xml_value, matcher, parsed, result, depth);
                     }
                     // println!("Number found: {}", found);
                 }
@@ -125,6 +126,7 @@ fn traverse(
             let qualified_element_name = format!("{}{}{}", xml_name, LEVEL, depth);
             if elements.contains_key(&qualified_element_name) {
                 recording = true;
+                // println!("Element to record: {}", qualified_element_name);
                 let mut siblings_to_search = Vec::default();
                 siblings_to_search.extend(element.next_siblings().filter(|el| el.has_tag_name(element.tag_name())).map(Rc::new));
                 if !siblings_to_search.is_empty() {
@@ -151,9 +153,9 @@ fn traverse(
                 let mut xml_value = element.text().unwrap_or("").to_owned();
                 found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
                 for attribute in element.attributes() {
-                    xml_name = xml_name + "/@" + attribute.name();
+                    let xml_attribute = format!("{}{}{}", xml_name, "/@", attribute.name());
                     xml_value = attribute.value().to_owned();
-                    found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
+                    found = found + record(&xml_attribute, &xml_value, matcher, parsed, result, depth);
                 }
                 // println!("Number found: {}", found);    
             } 
@@ -205,7 +207,7 @@ fn record(
     let mut found: usize = 0;
     // println!("Looking for: {}", &element);
     if let Some(column) = matcher.get(&element) {
-        //println!("Found: {} = {}", &element, xml_value);
+        // println!("Found on level {}: {} = {}", depth, &element, xml_value);
         result.insert(column.to_owned(), Match::Value(xml_value.to_owned()));
         parsed.insert(column.to_owned());
         found = 1;

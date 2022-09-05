@@ -1,4 +1,4 @@
-block = { "{" ~ (element | directive | block)* ~ "}" }
+config = { (element | directive | block)* }
 
 // built-in removal 
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
@@ -9,3 +9,4 @@ xml_name = { "\"" ~ ( "\"\"" | (!"\"" ~ ANY) )* ~ "\"" }
 
 element = { "<" ~ (!">" ~ ANY)* ~ ">" }
 directive = { column_name ~ "=" ~ xml_name }
+block = { "{" ~ (element | directive | block)* ~ "}" }
