@@ -1,2 +1,4 @@
-## Generators that are not nested
-1. Need to figure out how to handle generators that are not nested, as in the BAG example
+## Handling non-values
+1. The file ending with 0005 in the CDR example produce no rows.
+2. Perhaps empty occurences of <ChangeOfCharCondition/> should produce rows?
+3. Decide if that is desirable and if it should be controllable in the config.

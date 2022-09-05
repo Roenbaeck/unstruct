@@ -46,18 +46,18 @@ fn traverse(
     elements: &HashMap<String, Vec<String>>,
     levels: &Vec<usize>,
     namespaces: &HashMap<String, String>,
-    parsed: &mut HashSet<String>,
+    parsed: &mut HashMap<String, HashSet<String>>,
     result: &mut HashMap<String, Match>,
     output: &mut File,
-    recording: bool,
+    recording: Option<String>,
     siblings: bool,
     depth: usize,
 ) {
+    // let current_element = recording.clone();
     // println!("Parsing depth: {}", depth);
     if depth > levels.len() {
         return;
     }
-    let mut recording = recording;
     let mut siblings = siblings;
     let mut found: usize = 0;
     if siblings {
@@ -67,7 +67,7 @@ fn traverse(
                 siblings = false;
                 nodes_to_search.extend(element.children().map(Rc::new));
             }  
-            if recording {
+            if recording.is_some() {
                 let mut xml_name = element.tag_name().name().to_string();
                 let schema_name = element.tag_name().namespace();
                 if schema_name.is_some() {
@@ -86,11 +86,11 @@ fn traverse(
                 }
                 if found < levels[depth-1] {
                     let mut xml_value = element.text().unwrap_or("").to_owned();
-                    found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
+                    found = found + record(&xml_name, &xml_value, recording.as_ref().unwrap(), matcher, parsed, result, depth);
                     for attribute in element.attributes() {
                         let xml_attribute = format!("{}{}{}", xml_name, "/@", attribute.name());
                         xml_value = attribute.value().to_owned();
-                        found = found + record(&xml_attribute, &xml_value, matcher, parsed, result, depth);
+                        found = found + record(&xml_attribute, &xml_value, recording.as_ref().unwrap(), matcher, parsed, result, depth);
                     }
                     // println!("Number found: {}", found);
                 }
@@ -106,7 +106,7 @@ fn traverse(
                     parsed,
                     result,
                     output,
-                    recording,
+                    recording.to_owned(),
                     siblings,
                     if siblings { depth } else { depth + 1 },
                 );
@@ -125,7 +125,6 @@ fn traverse(
             }
             let qualified_element_name = format!("{}{}{}", xml_name, LEVEL, depth);
             if elements.contains_key(&qualified_element_name) {
-                recording = true;
                 // println!("Element to record: {}", qualified_element_name);
                 let mut siblings_to_search = Vec::default();
                 siblings_to_search.extend(element.next_siblings().filter(|el| el.has_tag_name(element.tag_name())).map(Rc::new));
@@ -140,7 +139,7 @@ fn traverse(
                         parsed,
                         result,
                         output,
-                        recording,
+                        Some(qualified_element_name),
                         true,
                         depth,
                     );
@@ -149,13 +148,13 @@ fn traverse(
             } else if element.has_children() {
                 nodes_to_search.extend(element.children().map(Rc::new));
             }  
-            if recording && found < levels[depth-1] {
+            if recording.is_some() && found < levels[depth-1] {
                 let mut xml_value = element.text().unwrap_or("").to_owned();
-                found = found + record(&xml_name, &xml_value, matcher, parsed, result, depth);
+                found = found + record(&xml_name, &xml_value, recording.as_ref().unwrap(), matcher, parsed, result, depth);
                 for attribute in element.attributes() {
                     let xml_attribute = format!("{}{}{}", xml_name, "/@", attribute.name());
                     xml_value = attribute.value().to_owned();
-                    found = found + record(&xml_attribute, &xml_value, matcher, parsed, result, depth);
+                    found = found + record(&xml_attribute, &xml_value, recording.as_ref().unwrap(), matcher, parsed, result, depth);
                 }
                 // println!("Number found: {}", found);    
             } 
@@ -177,39 +176,47 @@ fn traverse(
             );
         }
     }
-    if !parsed.is_empty() {
-        parsed.clear();
-        // ------------------------------------------------------------------------------------------
-        let mut peekable_header = header.iter().peekable();
-        while let Some(head) = peekable_header.next() {
-            if let Some(Match::Value(column_value)) = result.get(head) {
-                write!(output, "{}", column_value).expect("Cannot write to output file");
+    if elements.keys().all(|key| parsed.contains_key(key)) {
+        if !parsed.keys().all(|key| parsed.get(key).unwrap().is_empty()) {
+            // println!("Parsed <{}>: {:?}", current_element.unwrap(), parsed);
+            // println!("Result: {:?}", result);
+            for values in parsed.values_mut() {
+                values.clear();
             }
-            if peekable_header.peek().is_none() {
-                write!(output, "{}", TERMINATOR).expect("Cannot write to output file");
-            } else {
-                write!(output, "{}", DELIMITER).expect("Cannot write to output file");
+            // ------------------------------------------------------------------------------------------
+            let mut peekable_header = header.iter().peekable();
+            while let Some(head) = peekable_header.next() {
+                if let Some(Match::Value(column_value)) = result.get(head) {
+                    write!(output, "{}", column_value).expect("Cannot write to output file");
+                }
+                if peekable_header.peek().is_none() {
+                    write!(output, "{}", TERMINATOR).expect("Cannot write to output file");
+                } else {
+                    write!(output, "{}", DELIMITER).expect("Cannot write to output file");
+                }
             }
+            // ------------------------------------------------------------------------------------------
         }
-        // ------------------------------------------------------------------------------------------
     }
 }
 
 fn record(
     xml_name: &str,
     xml_value: &str,
+    recording: &String,
     matcher: &HashMap<String, String>,
-    parsed: &mut HashSet<String>,
+    parsed: &mut HashMap<String, HashSet<String>>,
     result: &mut HashMap<String, Match>,
     depth: usize,
 ) -> usize {
     let element = format!("{}{}{}", xml_name, LEVEL, depth);
     let mut found: usize = 0;
-    // println!("Looking for: {}", &element);
+    // println!("Looking for: {} in <{}>", &element, recording);
     if let Some(column) = matcher.get(&element) {
         // println!("Found on level {}: {} = {}", depth, &element, xml_value);
         result.insert(column.to_owned(), Match::Value(xml_value.to_owned()));
-        parsed.insert(column.to_owned());
+        let values = parsed.entry(recording.to_owned()).or_insert(HashSet::new());        
+        values.insert(column.to_owned());
         found = 1;
     }
     found
@@ -258,8 +265,7 @@ fn main() {
                         let doc =
                             roxmltree::Document::parse(&contents).expect("Could not parse the xml");
                         result.extend(header.iter().map(|head| (head.to_owned(), Match::Nothing)));
-
-                        let mut parsed: HashSet<String> = HashSet::default();
+                        let mut parsed: HashMap<String, HashSet<String>> = HashMap::default();
                         let root = doc.root_element();
                         let mut namespaces: HashMap<String, String> = HashMap::default();
                         for namespace in root.namespaces() {
@@ -283,7 +289,7 @@ fn main() {
                             &mut parsed,
                             &mut result,
                             &mut output,
-                            false,
+                            None,
                             false,
                             1,
                         );
