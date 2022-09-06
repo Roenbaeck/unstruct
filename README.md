@@ -10,7 +10,8 @@ have CDR (call detail record) files in XML format, since these can become abunda
 The files currently used for testing are mockup CDR files, found in the data subfolder. 
 
 When testing version 0.1.3 on a recent MacBook Pro, unstruct was able to parse 10 000 CDR XML files 
-per second.
+per second. These 10 000 XML files resulted in _one_ tab separated file. Unstruct is many to one 
+if you specify a filename pattern that match several XML files.
 
 ## Configuration
 This is an example parser configuration:
