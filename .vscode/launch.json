@@ -19,7 +19,7 @@
                     "kind": "bin"
                 }
             },
-            "args": ["--filename", "example_cdr/*.xml", "--outfile", "example_cdr/result.txt", "--parser", "example_cdr/cdr.parser"],
+            "args": ["--filename", "example_cdr/*.xml", "--outfile", "example_cdr/result.txt", "--parser", "example_cdr/cdr.parser", "--metadata"],
             "cwd": "${workspaceFolder}"
         },
         {

@@ -25,6 +25,10 @@ struct Args {
     #[clap(short, long, default_value = "unstruct.parser")]
     parser: String,
 
+    /// Add metadata columns and values in the output file
+    #[clap(short, long)]
+    metadata: bool,
+
     /// Do not write any info to output
     #[clap(short, long)]
     quiet: bool,
@@ -227,6 +231,7 @@ fn main() {
         filename,
         outfile,
         parser,
+        metadata,
         quiet,
     } = Args::parse();
 
@@ -234,8 +239,11 @@ fn main() {
     let configuration = read_to_string(parser);
     match configuration {
         Ok(config) => {
-            let (matcher, header, elements, levels) = parse(&config);
+            let (matcher, mut header, elements, levels) = parse(&config);
             let mut result: HashMap<String, Match> = HashMap::default();
+            if metadata {
+                header.push("_path".to_owned());
+            }
 
             // parse the arguments to get the filename glob pattern
             if !quiet {
@@ -265,6 +273,9 @@ fn main() {
                         let doc =
                             roxmltree::Document::parse(&contents).expect("Could not parse the xml");
                         result.extend(header.iter().map(|head| (head.to_owned(), Match::Nothing)));
+                        if metadata {
+                            result.insert("_path".to_owned(), Match::Value(path.display().to_string()));
+                        }
                         let mut parsed: HashMap<String, HashSet<String>> = HashMap::default();
                         let root = doc.root_element();
                         let mut namespaces: HashMap<String, String> = HashMap::default();

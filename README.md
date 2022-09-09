@@ -55,6 +55,7 @@ the output file, but values will be empty. Look at the file `result.txt` for exa
 | `-f, --filename <pattern>` | The name of the input xml file or matching files if wildcards are used |
 | `-o, --outfile <filename>` | The name of the text file into which the results of the parsing will be output |
 | `-p, --parser <filename>` | The configuration file specifying the parsing rules [default: "unstruct.parser"] |
+| `-m, --metadata` | If specified the names of the parsed files will be added in a `_path` column |
 | `-q, --quiet` | If specified the program will not output any text |
 
 ## Help
