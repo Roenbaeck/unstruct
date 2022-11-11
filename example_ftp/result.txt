@@ -1,4 +1,4 @@
-start	filename	destination	result
-2022-09-01T07:25:18.571Z	/cos1sgw1_20220831105512_17011.xml.gz	V:\Sisula\sftp\gz\cos1sgw1_20220831105512_17011.xml.gz	true
-2022-09-01T07:25:18.571Z	/cos1sgw1_20220831105545_17012.xml.gz	V:\Sisula\sftp\gz\cos1sgw1_20220831105545_17012.xml.gz	true
-2022-09-01T07:25:18.571Z	/cos1sgw1_20220831111012_17013.xml.gz	V:\Sisula\sftp\gz\cos1sgw1_20220831111012_17013.xml.gz	true
+start	result	filename	destination
+2022-09-01T07:25:18.571Z	true	/cos1sgw1_20220831105512_17011.xml.gz	V:\Sisula\sftp\gz\cos1sgw1_20220831105512_17011.xml.gz
+2022-09-01T07:25:18.571Z		/cos1sgw1_20220831105545_17012.xml.gz	V:\Sisula\sftp\gz\cos1sgw1_20220831105545_17012.xml.gz
+2022-09-01T07:25:18.571Z		/cos1sgw1_20220831111012_17013.xml.gz	V:\Sisula\sftp\gz\cos1sgw1_20220831111012_17013.xml.gz

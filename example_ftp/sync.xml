@@ -1,18 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <session xmlns="http://winscp.net/schema/session/1.0" name="computer@somewhere" start="2022-09-01T07:25:18.571Z">
-  <download>
+  <download success="true" >
     <filename value="/cos1sgw1_20220831105512_17011.xml.gz" />
     <destination value="V:\Sisula\sftp\gz\cos1sgw1_20220831105512_17011.xml.gz" />
-    <result success="true" />
   </download>
-  <download>
+  <download success="true" >
     <filename value="/cos1sgw1_20220831105545_17012.xml.gz" />
     <destination value="V:\Sisula\sftp\gz\cos1sgw1_20220831105545_17012.xml.gz" />
-    <result success="true" />
   </download>
-  <download>
+  <download success="false" >
     <filename value="/cos1sgw1_20220831111012_17013.xml.gz" />
     <destination value="V:\Sisula\sftp\gz\cos1sgw1_20220831111012_17013.xml.gz" />
-    <result success="true" />
   </download>
 </session>
