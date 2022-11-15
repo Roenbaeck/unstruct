@@ -1,2 +1,2 @@
-GemeenteIdentificatie	dataset
-0106	LVBAG
+GemeenteIdentificatie	dataset	leveringsId	domein	identificatie
+0106	LVBAG	0000000002	NL.IMBAG.Pand	0106100000000999

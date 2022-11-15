@@ -46,6 +46,7 @@ const TERMINATOR: char = '\n';
 fn traverse(
     nodes: Vec<Rc<Node>>,
     matcher: &HashMap<String, String>,
+    filters: &HashMap<String, String>,
     header: &Vec<String>,
     elements: &HashMap<String, Vec<String>>,
     levels: &Vec<usize>,
@@ -64,8 +65,10 @@ fn traverse(
     }
     let mut siblings = siblings;
     let mut found: usize = 0;
+    let mut skip: bool;
     if siblings {
         for element in nodes.into_iter().filter(|el| el.is_element()) {
+            skip = false;
             let mut nodes_to_search = Vec::default();
             if element.has_children() {
                 siblings = false;
@@ -88,21 +91,34 @@ fn traverse(
                             .map(|head| (head.to_owned(), Match::Nothing)),
                     );
                 }
-                if found < levels[depth-1] {
-                    let mut xml_value = element.text().unwrap_or("").to_owned();
-                    found = found + record(&xml_name, &xml_value, recording.as_ref().unwrap(), matcher, parsed, result, depth);
-                    for attribute in element.attributes() {
-                        let xml_attribute = format!("{}{}{}", xml_name, "/@", attribute.name());
-                        xml_value = attribute.value().to_owned();
-                        found = found + record(&xml_attribute, &xml_value, recording.as_ref().unwrap(), matcher, parsed, result, depth);
-                    }
-                    // println!("Number found: {}", found);
+                let mut xml_value = element.text().unwrap_or("").to_owned();
+                let qualified_name = format!("{}{}{}", xml_name, LEVEL, depth);
+                let value_filter = filters.get(&qualified_name);
+                if value_filter.is_some() && xml_value.ne(value_filter.unwrap()) {
+                    skip = true;
                 }
+                //println!("Filtering: {} = {:?} (siblings = {})", &qualified_name, filters.get(&qualified_name), siblings);
+                found = found + record(&xml_name, &xml_value, recording.as_ref().unwrap(), matcher, parsed, result, depth);
+                for attribute in element.attributes() {
+                    let xml_attribute = format!("{}{}{}", xml_name, "/@", attribute.name());
+                    xml_value = attribute.value().to_owned();
+                    let qualified_name = format!("{}{}{}", xml_attribute, LEVEL, depth);
+                    let value_filter = filters.get(&qualified_name);
+                    if value_filter.is_some() && xml_value.ne(value_filter.unwrap()) {
+                        skip = true;
+                        break;
+                    }
+                    //println!("Filtering: {} = {:?} (siblings = {})", &qualified_name, filters.get(&qualified_name), siblings);
+                    //println!("Attribute found: {} (on {} with {} found)", xml_value, recording.as_ref().unwrap(), found);
+                    found = found + record(&xml_attribute, &xml_value, recording.as_ref().unwrap(), matcher, parsed, result, depth);
+                }
+                // println!("Number found: {}", found);
             } 
-            if !nodes_to_search.is_empty() {
+            if !nodes_to_search.is_empty() && !skip {
                 traverse(
                     nodes_to_search,
                     matcher,
+                    filters,
                     header,
                     elements,
                     levels,
@@ -118,6 +134,7 @@ fn traverse(
         }
     } else {
         let mut nodes_to_search = Vec::default();
+        skip = false;
         for element in nodes.into_iter().filter(|el| el.is_element()) {
             let mut xml_name = element.tag_name().name().to_string();
             let schema_name = element.tag_name().namespace();
@@ -136,6 +153,7 @@ fn traverse(
                     traverse(
                         siblings_to_search,
                         matcher,
+                        filters,
                         header,
                         elements,
                         levels,
@@ -154,19 +172,35 @@ fn traverse(
             }  
             if recording.is_some() && found < levels[depth-1] {
                 let mut xml_value = element.text().unwrap_or("").to_owned();
+                let qualified_name = format!("{}{}{}", xml_name, LEVEL, depth);
+                let value_filter = filters.get(&qualified_name);
+                if value_filter.is_some() && xml_value.ne(value_filter.unwrap()) {
+                    skip = true;
+                    break;
+                }
+                // println!("Filtering: {} = {:?} (siblings = {})", &qualified_name, filters.get(&qualified_name), siblings);
                 found = found + record(&xml_name, &xml_value, recording.as_ref().unwrap(), matcher, parsed, result, depth);
                 for attribute in element.attributes() {
                     let xml_attribute = format!("{}{}{}", xml_name, "/@", attribute.name());
                     xml_value = attribute.value().to_owned();
+                    let qualified_name = format!("{}{}{}", xml_attribute, LEVEL, depth);
+                    let value_filter = filters.get(&qualified_name);
+                    if value_filter.is_some() && xml_value.ne(value_filter.unwrap()) {
+                        skip = true;
+                        break;
+                    }
+                    //println!("Filtering: {} = {:?} (siblings = {})", &qualified_name, filters.get(&qualified_name), siblings);
+                    //println!("Attribute found: {} (on {} with {} found)", xml_value, recording.as_ref().unwrap(), found);
                     found = found + record(&xml_attribute, &xml_value, recording.as_ref().unwrap(), matcher, parsed, result, depth);
                 }
                 // println!("Number found: {}", found);    
             } 
         }
-        if !nodes_to_search.is_empty() {
+        if !nodes_to_search.is_empty() && !skip {
             traverse(
                 nodes_to_search,
                 matcher,
+                filters,
                 header,
                 elements,
                 levels,
@@ -239,7 +273,13 @@ fn main() {
     let configuration = read_to_string(parser);
     match configuration {
         Ok(config) => {
-            let (matcher, mut header, elements, levels) = parse(&config);
+            let (
+                matcher, 
+                filters,
+                mut header, 
+                elements, 
+                levels
+            ) = parse(&config);
             let mut result: HashMap<String, Match> = HashMap::default();
             if metadata {
                 header.push("_path".to_owned());
@@ -293,6 +333,7 @@ fn main() {
                         traverse(
                             nodes,
                             &matcher,
+                            &filters,
                             &header,
                             &elements,
                             &levels,

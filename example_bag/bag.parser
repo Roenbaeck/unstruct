@@ -12,6 +12,17 @@
     }
     <sl:standBestand> {
         dataset = "sl:dataset"
+        {
+            leveringsId = "sl:leveringsId"
+        }  
+        {
+            {
+                {
+                        domein = "Objecten:identificatie/@domein"
+                        identificatie = "Objecten:identificatie"
+                }
+            }
+        }      
     }
 }
 

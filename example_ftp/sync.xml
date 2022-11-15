@@ -12,4 +12,20 @@
     <filename value="/cos1sgw1_20220831111012_17013.xml.gz" />
     <destination value="V:\Sisula\sftp\gz\cos1sgw1_20220831111012_17013.xml.gz" />
   </download>
+  <download success="true" >
+    <filename value="/cos1sgw1_20220831111012_17014.xml.gz" />
+    <destination value="V:\Sisula\sftp\gz\cos1sgw1_20220831111012_17014.xml.gz" />
+  </download>
+  <download success="false" >
+    <filename value="/cos1sgw1_20220831111012_17015.xml.gz" />
+    <destination value="V:\Sisula\sftp\gz\cos1sgw1_20220831111012_17015.xml.gz" />
+  </download>
+  <download success="false" >
+    <filename value="/cos1sgw1_20220831111012_17016.xml.gz" />
+    <destination value="V:\Sisula\sftp\gz\cos1sgw1_20220831111012_17016.xml.gz" />
+  </download>
+  <download success="true" >
+    <filename value="/cos1sgw1_20220831111012_17017.xml.gz" />
+    <destination value="V:\Sisula\sftp\gz\cos1sgw1_20220831111012_17017.xml.gz" />
+  </download>
 </session>

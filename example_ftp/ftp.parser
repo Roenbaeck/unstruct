@@ -2,10 +2,10 @@
 start = "session/@start"
 {
     <download> 
+    ["download/@success" = "true"]
     result = "download/@success"
     {
         filename = "filename/@value"
         destination = "destination/@value"
     }
 }
-

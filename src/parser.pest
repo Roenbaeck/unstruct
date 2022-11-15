@@ -1,12 +1,14 @@
-config = { (element | directive | block)* }
+config = { (element | directive | filter | block)* }
 
 // built-in removal 
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
 digit = _{ '0'..'9' }
 column_name = ${ CASED_LETTER ~ (CASED_LETTER | digit | "_" )* }
-xml_name = { "\"" ~ ( "\"\"" | (!"\"" ~ ANY) )* ~ "\"" }
+xml_name = { ( "\"\"" | (!"\"" ~ ANY) )* }
 
 element = { "<" ~ (!">" ~ ANY)* ~ ">" }
-directive = { column_name ~ "=" ~ xml_name }
-block = { "{" ~ (element | directive | block)* ~ "}" }
+directive = { column_name ~ "=" ~ "\"" ~ xml_name ~ "\"" }
+value = { ( "\"\"" | (!"\"" ~ ANY) )* }
+filter = { "[" ~ "\"" ~ xml_name ~ "\"" ~ "=" ~ "\"" ~ value ~ "\"" ~ "]" }
+block = { "{" ~ (element | directive | filter | block)* ~ "}" }
