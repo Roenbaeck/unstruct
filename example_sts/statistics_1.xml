@@ -1,10 +1,10 @@
 <OMeS>
-	<PMSetup startTime=”2020-01-01 10:00” interval=”15”>
+	<PMSetup startTime="2020-01-01 10:00" interval="15">
 		<PMMOResult>
 			<MO>
 				<DN><![CDATA[PLMN-PLMN/DXT-123/TBS-1]]></DN>
             </MO>
-            <PTarget measurementType="100">
+            <PMTarget measurementType="100">
                 <USABLE_CH>105</USABLE_CH>
                 <PCK_DATA_BUSY>1</PCK_DATA_BUSY>
             </PMTarget>
@@ -13,18 +13,26 @@
 			<MO>
 				<DN><![CDATA[PLMN-PLMN/DXT-123/TBS-2]]></DN>
             </MO>
-            <PTarget measurementType="100">
-                <USABLE_CH>240/USABLE_CH>
+            <PMTarget measurementType="100">
+                <USABLE_CH>240</USABLE_CH>
                 <PCK_DATA_BUSY>2</PCK_DATA_BUSY>
             </PMTarget>
         </PMMOResult>
-    <PMSetup>
-	<PMSetup startTime=”2020-01-01 10:15” interval=”15”>
+		<PMMOResult>
+			<MO>
+				<DN><![CDATA[PLMN-PLMN/DXT-123/TBS-2]]></DN>
+            </MO>
+            <PMTarget measurementType="200">
+                <ANTENNAS>4</ANTENNAS>
+            </PMTarget>
+        </PMMOResult>
+    </PMSetup>
+	<PMSetup startTime="2020-01-01 10:15" interval="15">
 		<PMMOResult>
 			<MO>
 				<DN><![CDATA[PLMN-PLMN/DXT-123/TBS-1]]></DN>
             </MO>
-            <PTarget measurementType="100">
+            <PMTarget measurementType="100">
                 <USABLE_CH>105</USABLE_CH>
                 <PCK_DATA_BUSY>3</PCK_DATA_BUSY>
             </PMTarget>
@@ -33,10 +41,10 @@
 			<MO>
 				<DN><![CDATA[PLMN-PLMN/DXT-123/TBS-2]]></DN>
             </MO>
-            <PTarget measurementType="100">
+            <PMTarget measurementType="100">
                 <USABLE_CH>240</USABLE_CH>
                 <PCK_DATA_BUSY>4</PCK_DATA_BUSY>
             </PMTarget>
         </PMMOResult>
-    <PMSetup>
+    </PMSetup>
 </OMeS>

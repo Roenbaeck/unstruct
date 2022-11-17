@@ -1,0 +1,19 @@
+{
+    <PMSetup> 
+    startTime = "PMSetup/@startTime"
+    interval = "PMSetup/@interval"
+    {
+        <PMMOResult>
+        {
+            ["PMTarget/@measurementType" = "100"]
+            measurementType = "PMTarget/@measurementType"
+            {
+                DN = "DN"
+            }
+            {
+                USABLE_CH = "USABLE_CH"
+                PCK_DATA_BUSY = "PCK_DATA_BUSY"
+            }
+        }
+    }
+}
