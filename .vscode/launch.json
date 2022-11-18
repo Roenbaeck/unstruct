@@ -73,7 +73,7 @@
                     "kind": "bin"
                 }
             },
-            "args": ["--filename", "example_sts/*.xml", "--outfile", "example_sts/result.txt", "--parser", "example_sts/sts.parser"],
+            "args": ["--filename", "example_sts/*.xml", "--outfile", "example_sts/result.txt", "--parser", "example_sts/sts.parser", "--metadata"],
             "cwd": "${workspaceFolder}"
         },
         {

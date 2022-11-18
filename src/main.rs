@@ -301,12 +301,45 @@ fn main() {
                 }
             }
 
+            // if paths have common parts, only store the unique parts later
+            let matching_files = glob(&filename).expect("Failed to read glob pattern");
+            let mut common_path: Option<String> = None;
+            for entry in matching_files {
+                common_path = match entry {
+                    Ok(mut path) => {
+                        let mut popping = path.pop();
+                        let mut local_path: Option<String> = None;
+                        while popping {
+                            if !common_path.is_some() {
+                                common_path = Some(path.display().to_string());
+                            }
+                            if common_path.as_ref().unwrap().starts_with(&path.display().to_string()) {
+                                local_path = Some(path.display().to_string());
+                                break;
+                            }
+                            popping = path.pop();
+                        }   
+                        local_path                         
+                    }
+                    Err(_e) => None
+                }
+            }
+            // println!("Matching part of filename: {:?}", common_path);
+
             // use the glob to find matching files
-            for entry in glob(&filename).expect("Failed to read glob pattern") {
+            let matching_files = glob(&filename).expect("Failed to read glob pattern");
+            for entry in matching_files {
                 match entry {
                     Ok(path) => {
+                        let mut filename = path.display().to_string();
+                        if common_path.is_some() && !common_path.as_ref().unwrap().is_empty() {
+                            filename = filename.replace(common_path.as_ref().unwrap(), "");
+                            if filename.starts_with('/') || filename.starts_with('\\') {
+                                filename = filename[1..].to_string();
+                            }
+                        }
                         if !quiet {
-                            println!("Parsing the file: {:?}", &path.display());
+                            println!("Parsing the file: {}", &filename);
                         }
                         let contents = fs::read_to_string(&path)
                             .expect("Something went wrong reading the file");
@@ -314,7 +347,7 @@ fn main() {
                             roxmltree::Document::parse(&contents).expect("Could not parse the xml");
                         result.extend(header.iter().map(|head| (head.to_owned(), Match::Nothing)));
                         if metadata {
-                            result.insert("_path".to_owned(), Match::Value(path.display().to_string()));
+                            result.insert("_path".to_owned(), Match::Value(filename));
                         }
                         let mut parsed: HashMap<String, HashSet<String>> = HashMap::default();
                         let root = doc.root_element();
