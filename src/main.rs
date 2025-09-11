@@ -1,3 +1,4 @@
+// main.rs
 use clap::Parser;
 use glob::glob;
 use roxmltree::{self, Node};
@@ -353,12 +354,9 @@ fn main() {
                         let root = doc.root_element();
                         let mut namespaces: HashMap<String, String> = HashMap::default();
                         for namespace in root.namespaces() {
-                            match namespace.name() {
-                                Some(name) => {
-                                    namespaces.insert(namespace.uri().to_owned(), name.to_owned());
-                                },
-                                None => ()
-                            };
+                            if let Some(name) = namespace.name() {
+                                namespaces.insert(namespace.uri().to_owned(), name.to_owned());
+                            }
                         }
                         //println!("namespaces: {:?}", &namespaces);
                         let nodes = vec![Rc::new(root)];
