@@ -1,13 +1,11 @@
 use clap::Parser;
-use csv::{Terminator, Writer, WriterBuilder};
 use glob::glob;
-use std::collections::HashMap;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use tempfile::NamedTempFile;
 use unstruct::config::parse;
-use unstruct::transform::{extract_rows, Row};
+use unstruct::output::TsvWriter;
 
 #[derive(Parser, Debug)]
 #[clap(author, version)]
@@ -73,33 +71,6 @@ fn comparable_path(path: &Path) -> Result<PathBuf, String> {
     Ok(parent.join(name))
 }
 
-fn write_header<W: Write>(output: &mut Writer<W>, header: &[String]) -> Result<(), String> {
-    output
-        .write_record(header)
-        .map_err(|error| format!("Cannot write to output file: {error}"))
-}
-
-fn write_row<W: Write>(
-    output: &mut Writer<W>,
-    header: &[String],
-    row: &Row,
-    metadata: Option<&str>,
-) -> Result<(), String> {
-    let values: HashMap<&str, &str> = row
-        .iter()
-        .map(|(column, value)| (column.as_str(), value.as_str()))
-        .collect();
-    output
-        .write_record(header.iter().map(|column| {
-            if column == "_path" {
-                metadata.unwrap_or_default()
-            } else {
-                values.get(column.as_str()).copied().unwrap_or_default()
-            }
-        }))
-        .map_err(|error| format!("Cannot write to output file: {error}"))
-}
-
 fn run() -> Result<(), String> {
     let Args {
         filename,
@@ -111,14 +82,8 @@ fn run() -> Result<(), String> {
 
     let config_source = fs::read_to_string(&parser)
         .map_err(|error| format!("Could not read parser config {parser:?}: {error}"))?;
-    let configuration = parse(&config_source)?;
-    if metadata && configuration.header.iter().any(|column| column == "_path") {
-        return Err("Output column _path is reserved when --metadata is enabled".to_owned());
-    }
-    let mut header = configuration.header.clone();
-    if metadata {
-        header.push("_path".to_owned());
-    }
+    let configuration = parse(&config_source)
+        .map_err(|error| format!("Could not parse parser config {parser:?}: {error}"))?;
 
     if !quiet {
         println!("Finding files matching: {filename}");
@@ -130,6 +95,9 @@ fn run() -> Result<(), String> {
         .map(|entry| entry.map_err(|error| format!("Failed to read matched path: {error}")))
         .collect::<Result<Vec<_>, _>>()?;
     matching_files.sort();
+    if matching_files.is_empty() {
+        return Err(format!("No files matched input pattern: {filename}"));
+    }
     let common = common_parent(&matching_files);
 
     let output_path = PathBuf::from(&outfile);
@@ -159,11 +127,12 @@ fn run() -> Result<(), String> {
             output_parent.display()
         )
     })?;
-    let mut output = WriterBuilder::new()
-        .delimiter(b'\t')
-        .terminator(Terminator::Any(b'\n'))
-        .from_writer(output);
-    write_header(&mut output, &header)?;
+    let mut output = TsvWriter::new(output, &configuration, metadata).map_err(|error| {
+        format!(
+            "Could not initialize output file {}: {error}",
+            output_path.display()
+        )
+    })?;
 
     for path in matching_files {
         let relative_path = metadata_path(&path, common.as_deref());
@@ -172,23 +141,27 @@ fn run() -> Result<(), String> {
         }
         let contents = fs::read_to_string(&path)
             .map_err(|error| format!("Could not read XML file {}: {error}", path.display()))?;
-        let rows = extract_rows(&configuration, &contents)?;
-        for row in rows {
-            write_row(
-                &mut output,
-                &header,
-                &row,
+        output
+            .write_xml(
+                &configuration,
+                &contents,
                 metadata.then_some(relative_path.as_str()),
-            )?;
-        }
+            )
+            .map_err(|error| {
+                format!(
+                    "Could not process XML file {} or write output {}: {error}",
+                    path.display(),
+                    output_path.display()
+                )
+            })?;
     }
 
-    if !quiet {
-        println!("All done!");
-    }
-    let output = output
-        .into_inner()
-        .map_err(|error| format!("Cannot flush output file: {}", error.error()))?;
+    let output = output.finish().map_err(|error| {
+        format!(
+            "Could not finalize output file {}: {error}",
+            output_path.display()
+        )
+    })?;
     output.persist(&output_path).map_err(|error| {
         format!(
             "Could not publish output file {}: {}",
@@ -196,12 +169,18 @@ fn run() -> Result<(), String> {
             error.error
         )
     })?;
+    if !quiet {
+        println!("All done!");
+    }
     Ok(())
 }
 
-fn main() {
-    if let Err(error) = run() {
-        eprintln!("{error}");
-        std::process::exit(1);
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
     }
 }

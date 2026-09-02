@@ -1,45 +1,82 @@
 use pest::iterators::{Pair, Pairs};
 use pest::Parser;
 use pest_derive::Parser;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Parser)]
 #[grammar = "parser.pest"]
 struct UnstructParser;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct XmlName {
+    pub namespace: Option<String>,
+    pub local_name: String,
+}
+
+impl XmlName {
+    fn parse(value: &str, namespaces: &HashMap<String, String>) -> Result<Self, String> {
+        let (namespace, local_name) = match value.split_once(':') {
+            Some((prefix, local_name))
+                if !prefix.is_empty() && !local_name.is_empty() && !local_name.contains(':') =>
+            {
+                let namespace = namespaces
+                    .get(prefix)
+                    .ok_or_else(|| format!("Undeclared namespace prefix {prefix:?}"))?;
+                (Some(namespace.clone()), local_name)
+            }
+            Some(_) => return Err(format!("Invalid qualified XML name: {value:?}")),
+            None if value.is_empty() => return Err("XML names cannot be empty".to_owned()),
+            None => (None, value),
+        };
+
+        Ok(Self {
+            namespace,
+            local_name: local_name.to_owned(),
+        })
+    }
+
+    fn display(&self) -> String {
+        match &self.namespace {
+            Some(namespace) => format!("{{{namespace}}}{}", self.local_name),
+            None => self.local_name.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Selector {
-    pub path: Vec<String>,
-    pub attribute: Option<String>,
+    pub path: Vec<XmlName>,
+    pub attribute: Option<XmlName>,
 }
 
 impl Selector {
-    fn parse(value: &str) -> Result<Self, String> {
+    fn parse(value: &str, namespaces: &HashMap<String, String>) -> Result<Self, String> {
         let (element, attribute) = match value.split_once("/@") {
             Some((element, attribute)) if !attribute.is_empty() && !attribute.contains("/@") => {
-                (element, Some(attribute.to_owned()))
+                (element, Some(XmlName::parse(attribute, namespaces)?))
             }
             Some(_) => return Err(format!("Invalid selector: {value:?}")),
             None => (value, None),
         };
-        let path: Vec<String> = element.split('/').map(str::to_owned).collect();
-        if path.iter().any(String::is_empty) {
-            return Err(format!("Invalid selector path: {value:?}"));
-        }
+        let path = element
+            .split('/')
+            .map(|name| XmlName::parse(name, namespaces))
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Self { path, attribute })
     }
 
     fn display(&self) -> String {
-        let element = self.path.join("/");
+        let element = self
+            .path
+            .iter()
+            .map(XmlName::display)
+            .collect::<Vec<_>>()
+            .join("/");
         match &self.attribute {
-            Some(attribute) => format!("{element}/@{attribute}"),
+            Some(attribute) => format!("{element}/@{}", attribute.display()),
             None => element,
         }
-    }
-
-    pub fn element(&self) -> &str {
-        self.path.last().expect("selector paths are never empty")
     }
 }
 
@@ -82,13 +119,33 @@ struct RecordingBuilder {
     children: Vec<usize>,
 }
 
-fn directive_parts(pair: Pair<Rule>) -> Result<(String, Selector), String> {
+fn namespace_parts(pair: Pair<Rule>) -> Result<(String, String), String> {
+    let mut prefix = None;
+    let mut uri = None;
+    for part in pair.into_inner() {
+        match part.as_rule() {
+            Rule::namespace_prefix => prefix = Some(part.as_str().to_owned()),
+            Rule::namespace_uri => uri = Some(part.as_str().to_owned()),
+            _ => return Err(format!("Malformed namespace component: {part:?}")),
+        }
+    }
+
+    match (prefix, uri) {
+        (Some(prefix), Some(uri)) => Ok((prefix, uri)),
+        _ => Err("Namespace declaration must contain a prefix and URI".to_owned()),
+    }
+}
+
+fn directive_parts(
+    pair: Pair<Rule>,
+    namespaces: &HashMap<String, String>,
+) -> Result<(String, Selector), String> {
     let mut column = None;
     let mut selector = None;
     for part in pair.into_inner() {
         match part.as_rule() {
             Rule::column_name => column = Some(part.as_str().to_owned()),
-            Rule::xml_name => selector = Some(Selector::parse(part.as_str())?),
+            Rule::xml_name => selector = Some(Selector::parse(part.as_str(), namespaces)?),
             _ => return Err(format!("Malformed directive component: {part:?}")),
         }
     }
@@ -99,12 +156,15 @@ fn directive_parts(pair: Pair<Rule>) -> Result<(String, Selector), String> {
     }
 }
 
-fn filter_parts(pair: Pair<Rule>) -> Result<(Selector, String), String> {
+fn filter_parts(
+    pair: Pair<Rule>,
+    namespaces: &HashMap<String, String>,
+) -> Result<(Selector, String), String> {
     let mut selector = None;
     let mut expected = None;
     for part in pair.into_inner() {
         match part.as_rule() {
-            Rule::xml_name => selector = Some(Selector::parse(part.as_str())?),
+            Rule::xml_name => selector = Some(Selector::parse(part.as_str(), namespaces)?),
             Rule::value => expected = Some(part.as_str().to_owned()),
             _ => return Err(format!("Malformed filter component: {part:?}")),
         }
@@ -125,18 +185,25 @@ fn compile_group(
     roots: &mut Vec<usize>,
     header: &mut Vec<String>,
     column_names: &mut HashSet<String>,
+    namespaces: &mut HashMap<String, String>,
 ) -> Result<(), String> {
     let mut local_scope = parent_scope;
 
     for pair in pairs {
         match pair.as_rule() {
+            Rule::xml_namespace => {
+                let (prefix, uri) = namespace_parts(pair)?;
+                if namespaces.insert(prefix.clone(), uri).is_some() {
+                    return Err(format!("Duplicate namespace prefix: {prefix}"));
+                }
+            }
             Rule::element => {
                 let value = pair.as_str();
                 let value = value
                     .strip_prefix('<')
                     .and_then(|value| value.strip_suffix('>'))
                     .ok_or_else(|| format!("Malformed recording element: {value:?}"))?;
-                let selector = Selector::parse(value)?;
+                let selector = Selector::parse(value, namespaces)?;
                 if selector.attribute.is_some() || selector.path.len() != 1 {
                     return Err("Recording elements must name one XML element".to_owned());
                 }
@@ -171,7 +238,7 @@ fn compile_group(
                 let scope = local_scope.ok_or_else(|| {
                     format!("Directive at XML depth {depth} is outside a recording scope")
                 })?;
-                let (name, selector) = directive_parts(pair)?;
+                let (name, selector) = directive_parts(pair, namespaces)?;
                 if !column_names.insert(name.clone()) {
                     return Err(format!("Duplicate output column: {name}"));
                 }
@@ -182,7 +249,7 @@ fn compile_group(
                 {
                     return Err(format!(
                         "Duplicate selector in recording <{}> at depth {depth}: {}",
-                        builders[scope].selector.element(),
+                        builders[scope].selector.display(),
                         selector.display()
                     ));
                 }
@@ -197,7 +264,7 @@ fn compile_group(
                 let scope = local_scope.ok_or_else(|| {
                     format!("Filter at XML depth {depth} is outside a recording scope")
                 })?;
-                let (selector, expected) = filter_parts(pair)?;
+                let (selector, expected) = filter_parts(pair, namespaces)?;
                 if builders[scope]
                     .filters
                     .iter()
@@ -205,7 +272,7 @@ fn compile_group(
                 {
                     return Err(format!(
                         "Duplicate filter in recording <{}> at depth {depth}: {}",
-                        builders[scope].selector.element(),
+                        builders[scope].selector.display(),
                         selector.display()
                     ));
                 }
@@ -223,6 +290,7 @@ fn compile_group(
                 roots,
                 header,
                 column_names,
+                namespaces,
             )?,
             Rule::EOI => {}
             _ => return Err(format!("Unsupported configuration item: {pair:?}")),
@@ -257,6 +325,7 @@ pub fn parse(configuration: &str) -> Result<Configuration, String> {
     let mut roots = Vec::new();
     let mut header = Vec::new();
     let mut column_names = HashSet::new();
+    let mut namespaces = HashMap::new();
     compile_group(
         config.into_inner(),
         1,
@@ -265,6 +334,7 @@ pub fn parse(configuration: &str) -> Result<Configuration, String> {
         &mut roots,
         &mut header,
         &mut column_names,
+        &mut namespaces,
     )?;
 
     if roots.is_empty() {
@@ -402,5 +472,38 @@ mod tests {
         let error = parse("<record>").unwrap_err();
 
         assert!(error.contains("at least one output column"));
+    }
+
+    #[test]
+    fn resolves_declared_namespace_aliases() {
+        let configuration = parse(
+            r#"
+                namespace cfg = "urn:unstruct:test"
+                <cfg:record> { value = "cfg:value" }
+            "#,
+        );
+
+        assert!(configuration.is_ok());
+    }
+
+    #[test]
+    fn rejects_undeclared_namespace_prefixes() {
+        let error = parse("<cfg:record> { value = \"cfg:value\" }").unwrap_err();
+
+        assert!(error.contains("Undeclared namespace prefix \"cfg\""));
+    }
+
+    #[test]
+    fn rejects_duplicate_namespace_prefixes() {
+        let error = parse(
+            r#"
+                namespace cfg = "urn:first"
+                namespace cfg = "urn:second"
+                <record> { value = "value" }
+            "#,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("Duplicate namespace prefix: cfg"));
     }
 }

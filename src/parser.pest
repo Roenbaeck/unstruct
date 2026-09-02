@@ -1,10 +1,13 @@
-config = { SOI ~ (element | directive | filter | block)+ ~ EOI }
+config = { SOI ~ xml_namespace* ~ (element | directive | filter | block)+ ~ EOI }
 
 // built-in removal 
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
 digit = _{ '0'..'9' }
 column_name = ${ (CASED_LETTER | "_") ~ (CASED_LETTER | digit | "_" )* }
+namespace_prefix = @{ (CASED_LETTER | "_") ~ (CASED_LETTER | digit | "_" | "-" | ".")* }
+namespace_uri = @{ (!"\"" ~ ANY)+ }
+xml_namespace = { "namespace" ~ namespace_prefix ~ "=" ~ "\"" ~ namespace_uri ~ "\"" }
 xml_name = { ( "\"\"" | (!"\"" ~ ANY) )* }
 
 element = { "<" ~ (!">" ~ ANY)* ~ ">" }

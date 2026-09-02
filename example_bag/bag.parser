@@ -1,3 +1,8 @@
+namespace sl-bag-extract = "http://www.kadaster.nl/schemas/lvbag/extract-deelbestand-lvc/v20200601"
+namespace selecties-extract = "http://www.kadaster.nl/schemas/lvbag/extract-selecties/v20200601"
+namespace sl = "http://www.kadaster.nl/schemas/standlevering-generiek/1.0"
+namespace Objecten = "www.kadaster.nl/schemas/lvbag/imbag/objecten/v20200601"
+
 <sl-bag-extract:bagStand> {
     {
         {

@@ -48,6 +48,11 @@ fn assert_success(output: &Output) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+    assert!(
+        output.stdout.is_empty(),
+        "--quiet emitted informational output:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
 }
 
 #[test]
@@ -139,20 +144,22 @@ fn malformed_configuration_fails() {
     );
 
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("Could not parse the config file"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Could not parse the config file"));
+    assert!(stderr.contains("malformed.parser"));
     assert!(!output_path.exists());
 }
 
 #[test]
 fn malformed_xml_fails() {
     let fixtures = fixtures();
-    let (output, output_path) = run_unstruct(
-        &fixtures.join("malformed.xml"),
-        &fixtures.join("features.parser"),
-    );
+    let malformed = fixtures.join("malformed.xml");
+    let (output, output_path) = run_unstruct(&malformed, &fixtures.join("features.parser"));
 
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("Could not parse the xml"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Could not parse the xml"));
+    assert!(stderr.contains(&malformed.display().to_string()));
     assert!(!output_path.exists());
 }
 
@@ -192,6 +199,128 @@ fn failed_transform_does_not_replace_existing_output() {
 }
 
 #[test]
+fn successful_transform_atomically_replaces_existing_output() {
+    let fixtures = fixtures();
+    let directory = tempfile::tempdir().expect("failed to create test directory");
+    let output_path = directory.path().join("result.tsv");
+    fs::write(&output_path, b"existing output\n").expect("failed to write existing output");
+
+    let output = run_unstruct_to(
+        &fixtures.join("unsafe_values.xml"),
+        &fixtures.join("unsafe_values.parser"),
+        &output_path,
+    );
+    assert_success(&output);
+
+    assert_eq!(
+        fs::read(output_path).expect("failed to read replaced output"),
+        "value\n\"left\tmiddle\nright\r\"\"räksmörgås\"\"\"\n".as_bytes()
+    );
+}
+
+#[test]
+fn failed_batch_does_not_publish_rows_from_earlier_files() {
+    let fixtures = fixtures();
+    let directory = tempfile::tempdir().expect("failed to create test directory");
+    fs::write(
+        directory.path().join("a-valid.xml"),
+        "<root><Record><value>valid</value></Record></root>",
+    )
+    .expect("failed to write valid XML");
+    fs::write(directory.path().join("b-invalid.xml"), "<root>")
+        .expect("failed to write malformed XML");
+    let output_path = directory.path().join("result.tsv");
+    fs::write(&output_path, b"existing output\n").expect("failed to write existing output");
+
+    let output = run_unstruct_to(
+        &directory.path().join("*.xml"),
+        &fixtures.join("unsafe_values.parser"),
+        &output_path,
+    );
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("b-invalid.xml"));
+    assert_eq!(
+        fs::read(output_path).expect("failed to read existing output"),
+        b"existing output\n"
+    );
+}
+
+#[test]
+fn invalid_glob_fails_without_creating_output() {
+    let fixtures = fixtures();
+    let (output, output_path) =
+        run_unstruct(Path::new("["), &fixtures.join("unsafe_values.parser"));
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Failed to read glob pattern"));
+    assert!(!output_path.exists());
+}
+
+#[test]
+fn unreadable_input_fails_without_creating_output() {
+    let fixtures = fixtures();
+    let directory = tempfile::tempdir().expect("failed to create test directory");
+    let (output, output_path) =
+        run_unstruct(directory.path(), &fixtures.join("unsafe_values.parser"));
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Could not read XML file"));
+    assert!(!output_path.exists());
+}
+
+#[test]
+fn unwritable_output_location_fails_without_creating_output() {
+    let fixtures = fixtures();
+    let directory = tempfile::tempdir().expect("failed to create test directory");
+    let output_path = directory.path().join("missing").join("result.tsv");
+
+    let output = run_unstruct_to(
+        &fixtures.join("unsafe_values.xml"),
+        &fixtures.join("unsafe_values.parser"),
+        &output_path,
+    );
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Could not resolve output directory"));
+    assert!(!output_path.exists());
+}
+
+#[test]
+fn metadata_paths_are_sorted_relative_to_the_common_parent() {
+    let fixtures = fixtures();
+    let directory = tempfile::tempdir().expect("failed to create test directory");
+    let foo = directory.path().join("foo");
+    let foobar = directory.path().join("foobar");
+    fs::create_dir(&foo).expect("failed to create foo directory");
+    fs::create_dir(&foobar).expect("failed to create foobar directory");
+    fs::write(
+        foo.join("input.xml"),
+        "<root><Record><value>one</value></Record></root>",
+    )
+    .expect("failed to write foo XML");
+    fs::write(
+        foobar.join("input.xml"),
+        "<root><Record><value>two</value></Record></root>",
+    )
+    .expect("failed to write foobar XML");
+    let output_path = directory.path().join("result.tsv");
+
+    let output = run_command(
+        &directory.path().join("foo*").join("*.xml"),
+        &fixtures.join("unsafe_values.parser"),
+        &output_path,
+        true,
+    );
+    assert_success(&output);
+
+    assert_eq!(
+        fs::read(output_path).expect("failed to read generated output"),
+        b"value\t_path\none\tfoo/input.xml\ntwo\tfoobar/input.xml\n"
+    );
+}
+
+#[test]
 fn metadata_rejects_reserved_path_column_before_creating_output() {
     let fixtures = fixtures();
     let output_path = std::env::temp_dir().join(format!(
@@ -211,15 +340,14 @@ fn metadata_rejects_reserved_path_column_before_creating_output() {
 }
 
 #[test]
-fn empty_glob_succeeds_with_header_only_output() {
+fn empty_glob_fails_without_creating_output() {
     let fixtures = fixtures();
-    let (output, output_path) = run_unstruct(
-        &fixtures.join("does-not-exist-*.xml"),
-        &fixtures.join("features.parser"),
-    );
-    assert_success(&output);
+    let pattern = fixtures.join("does-not-exist-*.xml");
+    let (output, output_path) = run_unstruct(&pattern, &fixtures.join("features.parser"));
 
-    let actual = fs::read(&output_path).expect("failed to read generated output");
-    fs::remove_file(output_path).expect("failed to remove generated output");
-    assert_eq!(actual, b"id\tkind\tvalue\tunit\tmissing\n");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("No files matched input pattern"));
+    assert!(stderr.contains(&pattern.display().to_string()));
+    assert!(!output_path.exists());
 }

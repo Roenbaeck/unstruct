@@ -1,11 +1,13 @@
-<session>
-start = "session/@start"
+namespace winscp = "http://winscp.net/schema/session/1.0"
+
+<winscp:session>
+start = "winscp:session/@start"
 {
-    <download> 
-    ["download/@success" = "true"]
-    result = "download/@success"
+    <winscp:download>
+    ["winscp:download/@success" = "true"]
+    result = "winscp:download/@success"
     {
-        filename = "filename/@value"
-        destination = "destination/@value"
+        filename = "winscp:filename/@value"
+        destination = "winscp:destination/@value"
     }
 }

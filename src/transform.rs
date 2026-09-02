@@ -1,4 +1,4 @@
-use crate::config::{Configuration, Recording, Selector};
+use crate::config::{Configuration, Recording, Selector, XmlName};
 use roxmltree::{Document, Node};
 use std::collections::HashMap;
 
@@ -8,61 +8,57 @@ fn depth(node: Node<'_, '_>) -> usize {
     node.ancestors().filter(Node::is_element).count()
 }
 
-fn qualified_name(node: Node<'_, '_>, namespaces: &HashMap<String, String>) -> String {
-    let name = node.tag_name().name();
-    match node
-        .tag_name()
-        .namespace()
-        .and_then(|namespace| namespaces.get(namespace))
-    {
-        Some(prefix) => format!("{prefix}:{name}"),
-        None => name.to_owned(),
-    }
+fn name_matches(expected: &XmlName, local_name: &str, namespace: Option<&str>) -> bool {
+    expected.local_name == local_name && expected.namespace.as_deref() == namespace
 }
 
-fn selector_value(
-    selector: &Selector,
-    node: Node<'_, '_>,
-    namespaces: &HashMap<String, String>,
-) -> Option<String> {
+fn direct_text(node: Node<'_, '_>) -> String {
+    node.children()
+        .filter(Node::is_text)
+        .filter_map(|child| child.text())
+        .collect()
+}
+
+fn selector_value(selector: &Selector, node: Node<'_, '_>) -> Option<String> {
     if !node.is_element()
         || !selector
             .path
             .iter()
             .rev()
             .zip(node.ancestors().filter(Node::is_element))
-            .all(|(expected, candidate)| qualified_name(candidate, namespaces) == *expected)
+            .all(|(expected, candidate)| {
+                name_matches(
+                    expected,
+                    candidate.tag_name().name(),
+                    candidate.tag_name().namespace(),
+                )
+            })
         || selector.path.len() > node.ancestors().filter(Node::is_element).count()
     {
         return None;
     }
 
     match &selector.attribute {
-        Some(attribute) => node.attribute(attribute.as_str()).map(str::to_owned),
-        None => Some(node.text().unwrap_or("").to_owned()),
+        Some(attribute) => node
+            .attributes()
+            .find(|candidate| name_matches(attribute, candidate.name(), candidate.namespace()))
+            .map(|attribute| attribute.value().to_owned()),
+        None => Some(direct_text(node)),
     }
 }
 
-fn scope_matches(
-    recording: &Recording,
-    node: Node<'_, '_>,
-    namespaces: &HashMap<String, String>,
-) -> bool {
+fn scope_matches(recording: &Recording, node: Node<'_, '_>) -> bool {
     recording.filters.iter().all(|filter| {
         node.descendants().any(|candidate| {
             depth(candidate) == filter.depth
-                && selector_value(&filter.selector, candidate, namespaces).as_deref()
+                && selector_value(&filter.selector, candidate).as_deref()
                     == Some(filter.expected.as_str())
         })
     })
 }
 
-fn extract_scope(
-    recording: &Recording,
-    node: Node<'_, '_>,
-    namespaces: &HashMap<String, String>,
-) -> Vec<Row> {
-    if !scope_matches(recording, node, namespaces) {
+fn extract_scope(recording: &Recording, node: Node<'_, '_>) -> Vec<Row> {
+    if !scope_matches(recording, node) {
         return Vec::new();
     }
 
@@ -72,7 +68,7 @@ fn extract_scope(
             .descendants()
             .find_map(|candidate| {
                 (depth(candidate) == column.depth)
-                    .then(|| selector_value(&column.selector, candidate, namespaces))
+                    .then(|| selector_value(&column.selector, candidate))
                     .flatten()
             })
             .unwrap_or_default();
@@ -85,9 +81,9 @@ fn extract_scope(
             .descendants()
             .filter(|candidate| {
                 depth(*candidate) == child.depth
-                    && selector_value(&child.selector, *candidate, namespaces).is_some()
+                    && selector_value(&child.selector, *candidate).is_some()
             })
-            .flat_map(|candidate| extract_scope(child, candidate, namespaces))
+            .flat_map(|candidate| extract_scope(child, candidate))
             .collect();
         if child_rows.is_empty() {
             return Vec::new();
@@ -111,15 +107,6 @@ fn extract_scope(
 pub fn extract_rows(configuration: &Configuration, xml: &str) -> Result<Vec<Row>, String> {
     let document =
         Document::parse(xml).map_err(|error| format!("Could not parse the xml: {error}"))?;
-    let root = document.root_element();
-    let namespaces: HashMap<String, String> = root
-        .namespaces()
-        .filter_map(|namespace| {
-            namespace
-                .name()
-                .map(|name| (namespace.uri().to_owned(), name.to_owned()))
-        })
-        .collect();
 
     Ok(configuration
         .recordings
@@ -129,10 +116,58 @@ pub fn extract_rows(configuration: &Configuration, xml: &str) -> Result<Vec<Row>
                 .descendants()
                 .filter(|node| {
                     depth(*node) == recording.depth
-                        && selector_value(&recording.selector, *node, &namespaces).is_some()
+                        && selector_value(&recording.selector, *node).is_some()
                 })
-                .flat_map(|node| extract_scope(recording, node, &namespaces))
+                .flat_map(|node| extract_scope(recording, node))
                 .collect::<Vec<_>>()
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_rows;
+    use crate::config::parse;
+
+    #[test]
+    fn concatenates_direct_text_and_cdata_but_excludes_nested_text() {
+        let configuration = parse("{ <record> { value = \"value\" } }").unwrap();
+        let rows = extract_rows(
+            &configuration,
+            "<root><record><value>left<![CDATA[+cdata]]><nested>ignored</nested>right</value></record></root>",
+        )
+        .unwrap();
+
+        assert_eq!(rows[0]["value"], "left+cdataright");
+    }
+
+    #[test]
+    fn preserves_direct_formatting_whitespace() {
+        let configuration = parse("{ <record> { value = \"value\" } }").unwrap();
+        let rows = extract_rows(
+            &configuration,
+            "<root><record><value>  value\n</value></record></root>",
+        )
+        .unwrap();
+
+        assert_eq!(rows[0]["value"], "  value\n");
+    }
+
+    #[test]
+    fn matches_namespaced_attributes_by_uri() {
+        let configuration = parse(
+            r#"
+                namespace cfg = "urn:unstruct:attribute"
+                { <record> value = "record/@cfg:value" }
+            "#,
+        )
+        .unwrap();
+        let rows = extract_rows(
+            &configuration,
+            r#"<root><record xmlns:document="urn:unstruct:attribute" document:value="matched"/></root>"#,
+        )
+        .unwrap();
+
+        assert_eq!(rows[0]["value"], "matched");
+    }
 }

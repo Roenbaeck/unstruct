@@ -1,8 +1,7 @@
 # TODO
 
-This backlog was refreshed after a static code review on 2026-09-02. The review
-machine had no Rust toolchain, so every code change below still needs compilation
-and executable tests on a Rust-enabled machine.
+This backlog was refreshed after a static code review on 2026-09-02 and is being
+validated with compilation, executable tests, Clippy, and dependency auditing.
 
 Priority meanings:
 
@@ -58,64 +57,46 @@ Priority meanings:
 
 ## P2 - Reliability and maintainability
 
-- [ ] Refactor `config::parse`, traversal, and the CLI entry point to return
-	`Result` instead of calling `process::exit`, `unwrap`, or `expect`. Print
-	actionable errors to stderr and return a nonzero exit status for invalid
-	config/glob, an unwritable output, read failures, malformed XML, and write or
-	flush failures.
-- [ ] Choose and document batch error behavior: fail fast without publishing a
-	partial output, or continue past bad files and report a final failure summary.
-	Include the source filename in XML diagnostics. `--quiet` should suppress
-	informational output, not errors.
-- [ ] Collect glob matches once. The current two glob walks can see different
-	file sets if the directory changes between passes and duplicate filesystem
-	work. Sort the collected paths for deterministic output, and warn or fail when
-	no files match.
-- [ ] Compute metadata paths with `Path`/`PathBuf` components and `strip_prefix`
-	rather than string `starts_with` and `replace`. String prefixes confuse sibling
-	directories such as `foo` and `foobar`, and `replace` can remove occurrences
-	beyond the leading path. Define whether `_path` is relative to the common
-	parent, the glob root, or the current directory.
-- [ ] Make namespace matching URI-based and scoped. Only named namespace
-	declarations visible on the document root are currently collected;
-	descendant declarations are missed, multiple prefixes for one URI are
-	ambiguous, and XML prefixes are aliases that may change between equivalent
-	files. Add namespace declarations to the parser configuration or otherwise
-	compile stable `{namespace-uri}local-name` selectors.
-- [ ] Split the core transform from CLI/file I/O. Expose a function that accepts
-	parsed configuration plus XML and writes to an arbitrary `Write`; keep glob
-	expansion, path metadata, and diagnostics in the binary. This will make unit
-	and integration testing much simpler.
-- [ ] Replace the tuple returned by `config::parse` with named configuration
-	types. Model selectors, filters, recording scopes, headers, and level counts
-	explicitly so invalid states are harder to represent.
-- [ ] Define XML text semantics. `Node::text()` returns only a direct text child;
-	mixed-content elements, nested text, CDATA, and formatting whitespace need a
-	documented policy and tests.
-- [ ] Finish validating `.github/workflows/rust.yml`. Action and cache versions,
-	artifact names, lightweight push checks, and manual development builds have
-	been modernized. Document the stable-toolchain update policy and verify whether
-	every advertised GNU/musl cross target still builds on current hosted runners.
-- [ ] Add package metadata to `Cargo.toml` (`description`, `repository`,
-	`license`, and `readme`) and document the `Cargo.lock` update policy for this
-	binary.
-- [ ] Refresh the README: correct spelling, link every example, document filters
-	and namespaces, explain row creation and empty/missing values, describe exit
-	behavior, and replace the old `data`-folder reference with the current
-	`example_*` layout.
+- [x] Configuration parsing, transformation, serialization, and CLI orchestration
+	propagate `Result`; production paths contain no `unwrap`, `expect`, or
+	`process::exit`. Actionable failures are printed to stderr with a nonzero exit
+	status.
+- [x] Batch processing is documented and tested as fail-fast. A failed input
+	does not publish partial output, XML diagnostics include the source filename,
+	and `--quiet` suppresses informational output but not errors.
+- [x] Glob matches are collected once, sorted for deterministic output, and an
+	empty match fails before output creation.
+- [x] Metadata paths use `Path` components and `strip_prefix`. `_path` is
+	relative to the common parent of all matched inputs, including for sibling
+	directories such as `foo` and `foobar`.
+- [x] Namespace declarations in parser configurations compile aliases to stable
+	namespace URIs. Matching is independent of XML prefixes and supports default
+	and descendant-scoped namespace declarations.
+- [x] Core transformation and TSV serialization live in the library. `write_tsv`
+	accepts parsed configuration, XML text, and an arbitrary `Write`; the binary
+	retains glob expansion, metadata paths, atomic publication, and diagnostics.
+- [x] Named `Configuration`, `Recording`, `Selector`, `XmlName`, `Column`, and
+	`Filter` types model the parsed configuration.
+- [x] Element values concatenate direct text and CDATA children in document
+	order, exclude nested element text, and preserve whitespace. Unit tests cover
+	mixed content, CDATA, and formatting whitespace.
+- [ ] The release workflow now uses current action majors and advertises only
+	x86-64 GNU, musl, macOS, and Windows targets with valid linker setup. Native
+	GNU and musl release builds pass locally; run the manual
+	`build_release_artifacts` workflow after pushing to verify all hosted runners.
+- [x] `Cargo.toml` includes description, repository, MIT license, and README
+	metadata. The committed binary lockfile and its update policy are documented.
+- [x] The README links every example and documents configuration, filters,
+	namespaces, row and text semantics, metadata paths, output quoting, failures,
+	atomic batch behavior, options, dependencies, and CI targets.
 
 ## P3 - Performance and tool improvements
 
-- [ ] Wrap the output file in `BufWriter`. Rows are currently written directly
-	to `File` one field/delimiter at a time; buffering should reduce system calls.
-	Propagate the final flush error.
-- [ ] Remove `Rc<Node>` allocations. `roxmltree::Node` is a small copyable handle,
-	so allocating and reference-counting every traversed node should be
-	unnecessary. Confirm against the selected `roxmltree` release.
-- [ ] Reduce hot-path allocation. Qualified selector strings are repeatedly
-	built with `format!` for each element and attribute. A compiled selector tree,
-	borrowed names, or structured keys should remove most of this work while also
-	fixing context collisions.
+- [x] TSV output uses `csv::Writer`, which buffers internally, and propagates its
+	final flush error.
+- [x] Traversal uses copyable `roxmltree::Node` handles without `Rc` allocation.
+- [x] Selectors compile into structured URI/local-name keys; traversal compares
+	expanded names without formatting qualified selector strings.
 - [ ] Benchmark before and after performance changes using representative small
 	CDR batches and large XML files. Track throughput, peak memory, and output
 	size; update the README's old 10,000-files/second claim with reproducible

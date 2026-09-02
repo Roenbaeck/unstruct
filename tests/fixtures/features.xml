@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<root xmlns:n="urn:unstruct:test">
-  <n:Record status="keep">
-    <n:id kind="outer">R1</n:id>
-    <n:Item>
-      <n:value unit="kg">A</n:value>
-      <n:missing>present</n:missing>
-    </n:Item>
-    <n:Item>
-      <n:value unit="kg">B</n:value>
-    </n:Item>
-  </n:Record>
-  <n:Record status="skip">
-    <n:id kind="outer">R2</n:id>
-    <n:Item>
-      <n:value unit="kg">C</n:value>
-      <n:missing>excluded</n:missing>
-    </n:Item>
-  </n:Record>
+<root>
+  <document:Record xmlns:document="urn:unstruct:test" status="keep">
+    <document:id kind="outer">R1</document:id>
+    <document:Item>
+      <document:value unit="kg">A</document:value>
+      <document:missing>present</document:missing>
+    </document:Item>
+    <document:Item>
+      <document:value unit="kg">B</document:value>
+    </document:Item>
+  </document:Record>
+  <other:Record xmlns:other="urn:unstruct:test" status="skip">
+    <other:id kind="outer">R2</other:id>
+    <other:Item>
+      <other:value unit="kg">C</other:value>
+      <other:missing>excluded</other:missing>
+    </other:Item>
+  </other:Record>
 </root>

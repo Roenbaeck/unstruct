@@ -1,13 +1,15 @@
+namespace configured = "urn:unstruct:test"
+
 {
-    <n:Record>
-    ["n:Record/@status" = "keep"]
+    <configured:Record>
+    ["configured:Record/@status" = "keep"]
     {
-        id = "n:id"
-        kind = "n:id/@kind"
-        <n:Item> {
-            value = "n:value"
-            unit = "n:value/@unit"
-            missing = "n:missing"
+        id = "configured:id"
+        kind = "configured:id/@kind"
+        <configured:Item> {
+            value = "configured:value"
+            unit = "configured:value/@unit"
+            missing = "configured:missing"
         }
     }
 }

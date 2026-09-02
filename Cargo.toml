@@ -1,9 +1,11 @@
 [package]
 name = "unstruct"
-version = "0.1.8"
+version = "0.2.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Convert batches of XML documents into tab-separated relational data"
+repository = "https://github.com/Roenbaeck/unstruct"
+license = "MIT"
+readme = "README.md"
 
 [dependencies]
 roxmltree = "0.21"
