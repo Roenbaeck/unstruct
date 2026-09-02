@@ -1,0 +1,8 @@
+<Root> {
+    <Left> {
+        left = "value"
+    }
+    <Right> {
+        right = "value"
+    }
+}

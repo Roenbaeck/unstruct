@@ -1,0 +1,8 @@
+<Root> {
+    {
+        context = "value"
+    }
+    <Entry> {
+        id = "id"
+    }
+}

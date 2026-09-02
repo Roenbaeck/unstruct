@@ -15,18 +15,29 @@ fn run_unstruct(filename: &Path, parser: &Path) -> (Output, PathBuf) {
         std::process::id(),
         OUTPUT_ID.fetch_add(1, Ordering::Relaxed)
     ));
-    let output = Command::new(env!("CARGO_BIN_EXE_unstruct"))
+    let output = run_unstruct_to(filename, parser, &output_path);
+
+    (output, output_path)
+}
+
+fn run_unstruct_to(filename: &Path, parser: &Path, output_path: &Path) -> Output {
+    run_command(filename, parser, output_path, false)
+}
+
+fn run_command(filename: &Path, parser: &Path, output_path: &Path, metadata: bool) -> Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_unstruct"));
+    command
         .arg("--filename")
         .arg(filename)
         .arg("--outfile")
-        .arg(&output_path)
+        .arg(output_path)
         .arg("--parser")
         .arg(parser)
-        .arg("--quiet")
-        .output()
-        .expect("failed to run unstruct");
-
-    (output, output_path)
+        .arg("--quiet");
+    if metadata {
+        command.arg("--metadata");
+    }
+    command.output().expect("failed to run unstruct")
 }
 
 fn assert_success(output: &Output) {
@@ -55,7 +66,55 @@ fn filters_attributes_namespaces_nested_records_and_missing_values() {
 }
 
 #[test]
-fn tabs_and_newlines_in_xml_values_are_written_verbatim() {
+fn identical_selectors_under_different_parents_do_not_collide() {
+    let fixtures = fixtures();
+    let (output, output_path) = run_unstruct(
+        &fixtures.join("context_aware.xml"),
+        &fixtures.join("context_aware.parser"),
+    );
+    assert_success(&output);
+
+    let actual = fs::read(&output_path).expect("failed to read generated output");
+    let expected =
+        fs::read(fixtures.join("context_aware.txt")).expect("failed to read golden output");
+    fs::remove_file(output_path).expect("failed to remove generated output");
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn qualified_paths_distinguish_same_depth_sibling_branches() {
+    let fixtures = fixtures();
+    let (output, output_path) = run_unstruct(
+        &fixtures.join("qualified_paths.xml"),
+        &fixtures.join("qualified_paths.parser"),
+    );
+    assert_success(&output);
+
+    let actual = fs::read(&output_path).expect("failed to read generated output");
+    let expected =
+        fs::read(fixtures.join("qualified_paths.txt")).expect("failed to read golden output");
+    fs::remove_file(output_path).expect("failed to remove generated output");
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn outer_context_is_broadcast_regardless_of_sibling_order() {
+    let fixtures = fixtures();
+    let (output, output_path) = run_unstruct(
+        &fixtures.join("sibling_context.xml"),
+        &fixtures.join("sibling_context.parser"),
+    );
+    assert_success(&output);
+
+    let actual = fs::read(&output_path).expect("failed to read generated output");
+    let expected =
+        fs::read(fixtures.join("sibling_context.txt")).expect("failed to read golden output");
+    fs::remove_file(output_path).expect("failed to remove generated output");
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn structural_characters_are_quoted_and_unicode_is_preserved() {
     let fixtures = fixtures();
     let (output, output_path) = run_unstruct(
         &fixtures.join("unsafe_values.xml"),
@@ -64,10 +123,11 @@ fn tabs_and_newlines_in_xml_values_are_written_verbatim() {
     assert_success(&output);
 
     let actual = fs::read(&output_path).expect("failed to read generated output");
-    let expected =
-        fs::read(fixtures.join("unsafe_values.txt")).expect("failed to read golden output");
     fs::remove_file(output_path).expect("failed to remove generated output");
-    assert_eq!(actual, expected);
+    assert_eq!(
+        actual,
+        "value\n\"left\tmiddle\nright\r\"\"räksmörgås\"\"\"\n".as_bytes()
+    );
 }
 
 #[test]
@@ -93,7 +153,61 @@ fn malformed_xml_fails() {
 
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("Could not parse the xml"));
-    fs::remove_file(output_path).expect("failed to remove partial output");
+    assert!(!output_path.exists());
+}
+
+#[test]
+fn output_cannot_be_an_input_file() {
+    let fixtures = fixtures();
+    let directory = tempfile::tempdir().expect("failed to create test directory");
+    let input_path = directory.path().join("input.xml");
+    let input = fs::read(fixtures.join("features.xml")).expect("failed to read fixture");
+    fs::write(&input_path, &input).expect("failed to write input");
+
+    let output = run_unstruct_to(&input_path, &fixtures.join("features.parser"), &input_path);
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("also an input XML file"));
+    assert_eq!(fs::read(input_path).expect("failed to reread input"), input);
+}
+
+#[test]
+fn failed_transform_does_not_replace_existing_output() {
+    let fixtures = fixtures();
+    let directory = tempfile::tempdir().expect("failed to create test directory");
+    let output_path = directory.path().join("result.tsv");
+    fs::write(&output_path, b"existing output\n").expect("failed to write existing output");
+
+    let output = run_unstruct_to(
+        &fixtures.join("malformed.xml"),
+        &fixtures.join("features.parser"),
+        &output_path,
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(
+        fs::read(output_path).expect("failed to read existing output"),
+        b"existing output\n"
+    );
+}
+
+#[test]
+fn metadata_rejects_reserved_path_column_before_creating_output() {
+    let fixtures = fixtures();
+    let output_path = std::env::temp_dir().join(format!(
+        "unstruct-reserved-metadata-{}.tsv",
+        std::process::id()
+    ));
+    let output = run_command(
+        &fixtures.join("features.xml"),
+        &fixtures.join("reserved_metadata.parser"),
+        &output_path,
+        true,
+    );
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("_path is reserved"));
+    assert!(!output_path.exists());
 }
 
 #[test]

@@ -1,0 +1,6 @@
+<Root> {
+    {
+        left = "Left/value"
+        right = "Right/value"
+    }
+}

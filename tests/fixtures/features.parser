@@ -1,6 +1,7 @@
 {
+    <n:Record>
     ["n:Record/@status" = "keep"]
-    <n:Record> {
+    {
         id = "n:id"
         kind = "n:id/@kind"
         <n:Item> {

@@ -34,45 +34,27 @@ Priority meanings:
 
 ## P1 - Correctness and data integrity
 
-- [ ] Decide and implement empty-record semantics. The two self-closing
-	`<ChangeOfCharCondition/>` elements in
-	`example_cdr/sgw1_20220506_0005.xml` currently produce no rows because there
-	are no child nodes on which the nested directives can match. Decide whether
-	each empty recording element should emit a row with blank child columns, make
-	the behavior explicit (and configurable only if both modes are useful), then
-	add the expected rows to the CDR golden test. This item from the old TODO is
-	still outstanding.
-- [ ] Fix row expansion when outer-scope context and repeated child recordings
-	are in separate XML branches ([issue #6](https://github.com/Roenbaeck/unstruct/issues/6)).
-	The BAG traversal processes both `<sl:standBestand>` records before finding
-	`GemeenteIdentificatie`, so its shared result buffer retains only the second
-	record. Store values per recording scope, broadcast outer context to every
-	child row, and make output independent of sibling order. Update the BAG golden
-	result to contain both `leveringsId` rows.
-- [ ] Make matcher identity context-aware. Configuration is currently compiled
-	into keys containing only `xml-name + depth`; two directives, filters, or
-	recording elements with the same name at the same depth but under different
-	parents overwrite each other in `HashMap`s. Compile full selector paths (or a
-	tree) so separate branches cannot silently capture each other's values.
-- [x] Require the parser configuration grammar to consume the whole file. The
-	Pest `config` rule has no `SOI`/`EOI`, so a valid prefix can succeed while
-	trailing malformed or unsupported text is ignored; an invalid file may also
-	parse as an empty configuration because the top-level expression allows zero
-	items. Return a diagnostic with source location instead.
-- [ ] Define safe TSV serialization. XML text and attributes are written
-	verbatim, so a tab, carriage return, or newline changes the number of columns
-	or rows. Either document and implement an escaping convention accepted by the
-	target bulk loaders, or use a configurable delimiter/quoting policy through a
-	mature CSV/TSV writer. Test Unicode and empty fields too.
-- [ ] Reject an output path that is also an input path or is matched by the input
-	glob. The output file is created and truncated before input files are read,
-	which can destroy an input and then abort parsing it. Prefer writing a
-	temporary file and atomically replacing the destination after success.
-- [ ] Validate configurations before processing any files. At minimum reject
-	duplicate output column names, duplicate/ambiguous selectors, unsupported
-	nesting, no directives, and the reserved `_path` column when `--metadata` is
-	used. Do not silently overwrite entries in `matcher`, `filters`, or
-	`elements`.
+- [x] Empty recording elements emit rows with blank child columns. The two
+	self-closing `<ChangeOfCharCondition/>` elements in the fifth CDR fixture are
+	covered by both CDR golden files.
+- [x] Outer-scope context is broadcast to every repeated child row regardless
+	of sibling order ([issue #6](https://github.com/Roenbaeck/unstruct/issues/6)).
+	The BAG goldens now contain both `<sl:standBestand>` rows.
+- [x] Matcher identity is context-aware. Configuration compiles into a recording
+	tree, and ancestor-qualified selectors distinguish same-name elements in
+	separate branches without collisions.
+- [x] The parser configuration grammar consumes the whole file and reports
+	malformed or trailing content with source locations.
+- [x] TSV serialization uses the `csv` writer with tab delimiters and LF record
+	terminators. Structural characters are quoted, Unicode is preserved, and
+	empty fields remain empty.
+- [x] Output paths are checked against matched XML and parser paths before
+	writing. Output is built in a same-directory temporary file and atomically
+	published only after successful parsing and flushing.
+- [x] Configurations are validated before processing files. Duplicate columns,
+	ambiguous same-scope selectors and filters, duplicate recording selectors,
+	unsupported scope placement, no directives, and metadata's reserved `_path`
+	column are rejected.
 
 ## P2 - Reliability and maintainability
 

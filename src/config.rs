@@ -1,158 +1,286 @@
-// config.rs
-use pest::iterators::Pairs;
+use pest::iterators::{Pair, Pairs};
 use pest::Parser;
 use pest_derive::Parser;
-use std::{collections::HashMap, hash::Hash};
-
-pub const LEVEL: &str = "|";
+use std::collections::HashSet;
 
 #[derive(Parser)]
-#[grammar = "parser.pest"] // path relative to src
+#[grammar = "parser.pest"]
 struct UnstructParser;
 
-pub type ParsedConfiguration = (
-    HashMap<String, String>,
-    HashMap<String, String>,
-    Vec<String>,
-    HashMap<String, Vec<String>>,
-    Vec<usize>,
-);
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct Selector {
+    pub path: Vec<String>,
+    pub attribute: Option<String>,
+}
 
-#[allow(clippy::too_many_arguments)]
-pub fn block_recurse(
-    remainder: Pairs<Rule>,
-    matcher: &mut HashMap<String, String>,
-    filters: &mut HashMap<String, String>,
-    header: &mut Vec<String>,
-    elements: &mut HashMap<String, Vec<String>>,
-    levels: &mut Vec<usize>,
-    current_element: String,
-    level: usize,
-) {
-    let mut local_element = current_element;
-    // println!("Level: {}", level);
-    // println!("Remainder: {:?}", remainder);
-    while levels.len() < level {
-        levels.push(0);
-    }
-    for parsed in remainder {
-        match parsed.as_rule() {
-            Rule::element => {
-                let element = {
-                    let element = parsed.as_str();
-                    let one_before_last = element.len() - 1;
-                    let trimmed = &element[1..one_before_last];
-                    format!("{}{}{}", trimmed, LEVEL, level)
-                };
-                elements.insert(element.clone(), Vec::default());
-                local_element = element;
+impl Selector {
+    fn parse(value: &str) -> Result<Self, String> {
+        let (element, attribute) = match value.split_once("/@") {
+            Some((element, attribute)) if !attribute.is_empty() && !attribute.contains("/@") => {
+                (element, Some(attribute.to_owned()))
             }
-            Rule::directive => {
-                let mut column_name: Option<String> = None;
-                let mut xml_name: Option<String> = None;
-                for column_or_xml in parsed.into_inner() {
-                    match column_or_xml.as_rule() {
-                        Rule::column_name => {
-                            column_name = Some(column_or_xml.as_str().to_owned());
-                        }
-                        Rule::xml_name => {
-                            xml_name = Some(column_or_xml.as_str().to_owned());
-                        }
-                        _ => {
-                            println!("The directive is malformed: {:?}", column_or_xml);
-                        }
-                    }
-                }
-                // println!("{} = {}", column_name.as_ref().unwrap(), xml_name.as_ref().unwrap());
-                matcher.insert(
-                    {
-                        let element = xml_name.as_ref().unwrap();
-                        format!("{}{}{}", element, LEVEL, level)
-                    },
-                    column_name.as_ref().unwrap().to_owned(),
-                );
-                header.push(column_name.as_ref().unwrap().to_owned());
-                levels[level - 1] += 1;
-                if let Some(partial_header) = elements.get_mut(&local_element) {
-                    partial_header.push(column_name.as_ref().unwrap().to_owned());
-                }
-            }
-            Rule::filter => {
-                let mut xml_name: Option<String> = None;
-                let mut value: Option<String> = None;
-                for xml_or_value in parsed.into_inner() {
-                    match xml_or_value.as_rule() {
-                        Rule::xml_name => {
-                            xml_name = Some(xml_or_value.as_str().to_owned());
-                        }
-                        Rule::value => {
-                            value = Some(xml_or_value.as_str().to_owned());
-                        }
-                        _ => {
-                            println!("The directive is malformed: {:?}", xml_or_value);
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                filters.insert(
-                    {
-                        let element = xml_name.as_ref().unwrap();
-                        format!("{}{}{}", element, LEVEL, level)
-                    },
-                    value.as_ref().unwrap().to_owned(),
-                );
-            }
-            Rule::block => {
-                block_recurse(
-                    parsed.into_inner(),
-                    matcher,
-                    filters,
-                    header,
-                    elements,
-                    levels,
-                    local_element.to_owned(),
-                    level + 1,
-                );
-            }
-            Rule::EOI => {}
-            _ => {
-                println!("No parsing rule matches: {:?}", parsed);
-                std::process::exit(1);
-            }
+            Some(_) => return Err(format!("Invalid selector: {value:?}")),
+            None => (value, None),
+        };
+        let path: Vec<String> = element.split('/').map(str::to_owned).collect();
+        if path.iter().any(String::is_empty) {
+            return Err(format!("Invalid selector path: {value:?}"));
         }
+
+        Ok(Self { path, attribute })
+    }
+
+    fn display(&self) -> String {
+        let element = self.path.join("/");
+        match &self.attribute {
+            Some(attribute) => format!("{element}/@{attribute}"),
+            None => element,
+        }
+    }
+
+    pub fn element(&self) -> &str {
+        self.path.last().expect("selector paths are never empty")
     }
 }
 
-pub fn parse(configuration: &str) -> Result<ParsedConfiguration, String> {
-    // println!("The configuration is:\n{}", configuration);
-    match UnstructParser::parse(Rule::config, configuration) {
-        Result::Ok(mut remainder) => {
-            let mut matcher: HashMap<String, String> = HashMap::default();
-            let mut filters: HashMap<String, String> = HashMap::default();
-            let mut header: Vec<String> = Vec::default();
-            let mut elements: HashMap<String, Vec<String>> = HashMap::default();
-            let mut levels: Vec<usize> = Vec::default();
-            block_recurse(
-                remainder.next().unwrap().into_inner(),
-                &mut matcher,
-                &mut filters,
-                &mut header,
-                &mut elements,
-                &mut levels,
-                "".to_owned(),
-                1,
-            );
-            /*
-            println!("matcher: {:?}", &matcher);
-            println!("filters: {:?}", &filters);
-            println!("header: {:?}", &header);
-            println!("elements: {:?}", &elements);
-            println!("levels: {:?}", &levels);
-            */
-            Ok((matcher, filters, header, elements, levels))
+#[derive(Clone, Debug)]
+pub struct Column {
+    pub name: String,
+    pub selector: Selector,
+    pub depth: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct Filter {
+    pub selector: Selector,
+    pub expected: String,
+    pub depth: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct Recording {
+    pub selector: Selector,
+    pub depth: usize,
+    pub columns: Vec<Column>,
+    pub filters: Vec<Filter>,
+    pub children: Vec<Recording>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Configuration {
+    pub header: Vec<String>,
+    pub recordings: Vec<Recording>,
+}
+
+#[derive(Debug)]
+struct RecordingBuilder {
+    selector: Selector,
+    depth: usize,
+    parent: Option<usize>,
+    columns: Vec<Column>,
+    filters: Vec<Filter>,
+    children: Vec<usize>,
+}
+
+fn directive_parts(pair: Pair<Rule>) -> Result<(String, Selector), String> {
+    let mut column = None;
+    let mut selector = None;
+    for part in pair.into_inner() {
+        match part.as_rule() {
+            Rule::column_name => column = Some(part.as_str().to_owned()),
+            Rule::xml_name => selector = Some(Selector::parse(part.as_str())?),
+            _ => return Err(format!("Malformed directive component: {part:?}")),
         }
-        Result::Err(error) => Err(format!("Could not parse the config file:\n{error}")),
     }
+
+    match (column, selector) {
+        (Some(column), Some(selector)) => Ok((column, selector)),
+        _ => Err("Directive must contain a column and selector".to_owned()),
+    }
+}
+
+fn filter_parts(pair: Pair<Rule>) -> Result<(Selector, String), String> {
+    let mut selector = None;
+    let mut expected = None;
+    for part in pair.into_inner() {
+        match part.as_rule() {
+            Rule::xml_name => selector = Some(Selector::parse(part.as_str())?),
+            Rule::value => expected = Some(part.as_str().to_owned()),
+            _ => return Err(format!("Malformed filter component: {part:?}")),
+        }
+    }
+
+    match (selector, expected) {
+        (Some(selector), Some(expected)) => Ok((selector, expected)),
+        _ => Err("Filter must contain a selector and expected value".to_owned()),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compile_group(
+    pairs: Pairs<Rule>,
+    depth: usize,
+    parent_scope: Option<usize>,
+    builders: &mut Vec<RecordingBuilder>,
+    roots: &mut Vec<usize>,
+    header: &mut Vec<String>,
+    column_names: &mut HashSet<String>,
+) -> Result<(), String> {
+    let mut local_scope = parent_scope;
+
+    for pair in pairs {
+        match pair.as_rule() {
+            Rule::element => {
+                let value = pair.as_str();
+                let value = value
+                    .strip_prefix('<')
+                    .and_then(|value| value.strip_suffix('>'))
+                    .ok_or_else(|| format!("Malformed recording element: {value:?}"))?;
+                let selector = Selector::parse(value)?;
+                if selector.attribute.is_some() || selector.path.len() != 1 {
+                    return Err("Recording elements must name one XML element".to_owned());
+                }
+                if builders.iter().any(|recording| {
+                    recording.parent == parent_scope
+                        && recording.depth == depth
+                        && recording.selector == selector
+                }) {
+                    return Err(format!(
+                        "Duplicate recording selector at depth {depth}: {}",
+                        selector.display()
+                    ));
+                }
+
+                let index = builders.len();
+                builders.push(RecordingBuilder {
+                    selector,
+                    depth,
+                    parent: parent_scope,
+                    columns: Vec::new(),
+                    filters: Vec::new(),
+                    children: Vec::new(),
+                });
+                if let Some(parent) = parent_scope {
+                    builders[parent].children.push(index);
+                } else {
+                    roots.push(index);
+                }
+                local_scope = Some(index);
+            }
+            Rule::directive => {
+                let scope = local_scope.ok_or_else(|| {
+                    format!("Directive at XML depth {depth} is outside a recording scope")
+                })?;
+                let (name, selector) = directive_parts(pair)?;
+                if !column_names.insert(name.clone()) {
+                    return Err(format!("Duplicate output column: {name}"));
+                }
+                if builders[scope]
+                    .columns
+                    .iter()
+                    .any(|column| column.depth == depth && column.selector == selector)
+                {
+                    return Err(format!(
+                        "Duplicate selector in recording <{}> at depth {depth}: {}",
+                        builders[scope].selector.element(),
+                        selector.display()
+                    ));
+                }
+                builders[scope].columns.push(Column {
+                    name: name.clone(),
+                    selector,
+                    depth,
+                });
+                header.push(name);
+            }
+            Rule::filter => {
+                let scope = local_scope.ok_or_else(|| {
+                    format!("Filter at XML depth {depth} is outside a recording scope")
+                })?;
+                let (selector, expected) = filter_parts(pair)?;
+                if builders[scope]
+                    .filters
+                    .iter()
+                    .any(|filter| filter.depth == depth && filter.selector == selector)
+                {
+                    return Err(format!(
+                        "Duplicate filter in recording <{}> at depth {depth}: {}",
+                        builders[scope].selector.element(),
+                        selector.display()
+                    ));
+                }
+                builders[scope].filters.push(Filter {
+                    selector,
+                    expected,
+                    depth,
+                });
+            }
+            Rule::block => compile_group(
+                pair.into_inner(),
+                depth + 1,
+                local_scope,
+                builders,
+                roots,
+                header,
+                column_names,
+            )?,
+            Rule::EOI => {}
+            _ => return Err(format!("Unsupported configuration item: {pair:?}")),
+        }
+    }
+
+    Ok(())
+}
+
+fn build_recording(index: usize, builders: &[RecordingBuilder]) -> Recording {
+    let builder = &builders[index];
+    Recording {
+        selector: builder.selector.clone(),
+        depth: builder.depth,
+        columns: builder.columns.clone(),
+        filters: builder.filters.clone(),
+        children: builder
+            .children
+            .iter()
+            .map(|child| build_recording(*child, builders))
+            .collect(),
+    }
+}
+
+pub fn parse(configuration: &str) -> Result<Configuration, String> {
+    let mut parsed = UnstructParser::parse(Rule::config, configuration)
+        .map_err(|error| format!("Could not parse the config file:\n{error}"))?;
+    let config = parsed
+        .next()
+        .ok_or_else(|| "Configuration is empty".to_owned())?;
+    let mut builders = Vec::new();
+    let mut roots = Vec::new();
+    let mut header = Vec::new();
+    let mut column_names = HashSet::new();
+    compile_group(
+        config.into_inner(),
+        1,
+        None,
+        &mut builders,
+        &mut roots,
+        &mut header,
+        &mut column_names,
+    )?;
+
+    if roots.is_empty() {
+        return Err("Configuration must declare at least one recording element".to_owned());
+    }
+    if header.is_empty() {
+        return Err("Configuration must declare at least one output column".to_owned());
+    }
+
+    Ok(Configuration {
+        header,
+        recordings: roots
+            .into_iter()
+            .map(|root| build_recording(root, &builders))
+            .collect(),
+    })
 }
 
 #[cfg(test)]
@@ -186,5 +314,93 @@ mod tests {
     #[test]
     fn rejects_empty_configuration() {
         assert!(parse(" \n\t").is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_output_columns() {
+        let error = parse(
+            r#"
+                <record> {
+                    value = "first"
+                    value = "second"
+                }
+            "#,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("Duplicate output column: value"));
+    }
+
+    #[test]
+    fn rejects_duplicate_selectors_in_one_scope() {
+        let error = parse(
+            r#"
+                <record> {
+                    first = "value"
+                    second = "value"
+                }
+            "#,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("Duplicate selector in recording <record>"));
+    }
+
+    #[test]
+    fn allows_identical_selectors_in_different_scopes() {
+        let configuration = parse(
+            r#"
+                <root> {
+                    <left> { first = "value" }
+                    <right> { second = "value" }
+                }
+            "#,
+        );
+
+        assert!(configuration.is_ok());
+    }
+
+    #[test]
+    fn rejects_duplicate_filters_in_one_scope() {
+        let error = parse(
+            r#"
+                <record>
+                ["record/@active" = "true"]
+                ["record/@active" = "false"]
+                { value = "value" }
+            "#,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("Duplicate filter in recording <record>"));
+    }
+
+    #[test]
+    fn rejects_duplicate_recording_selectors() {
+        let error = parse(
+            r#"
+                <root> {
+                    <item> { first = "value" }
+                    <item> { second = "other" }
+                }
+            "#,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("Duplicate recording selector"));
+    }
+
+    #[test]
+    fn rejects_directives_outside_recording_scopes() {
+        let error = parse("value = \"value\"").unwrap_err();
+
+        assert!(error.contains("outside a recording scope"));
+    }
+
+    #[test]
+    fn rejects_configurations_without_directives() {
+        let error = parse("<record>").unwrap_err();
+
+        assert!(error.contains("at least one output column"));
     }
 }

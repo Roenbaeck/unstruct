@@ -38,7 +38,7 @@ This is an example parser configuration:
     }
 }
 ```
-The brackets indicte the hiearachy in the XML file you intend to parse. The first element you are interested 
+The brackets indicate the hierarchy in the XML file you intend to parse. The first element you are interested
 in parsing in this example  is `<sGW-GPRS-Ascii>` and it is one level below the root level of the document. 
 Within this element there are some parsing directives  on the format `column_name = "xml_element_name"` or
 `column_name = "xml_element_name/@optional_attribute_name"`. The `column_name` will end up as a header in 
@@ -47,10 +47,27 @@ the file with the results from the parsing.
 The elements that are specified literally: `<sGW-GPRS-Ascii>` and `<ChangeOfCharCondition>` are the ones for 
 which you want new rows to be created in the result. If an element `<sGW-GPRS-Ascii>` contains two 
 `<ChangeOfCharCondition>` elements, you will get two rows, where values "above" `<ChangeOfCharCondition>`
-will be reused. 
+will be reused. Outer values may appear in another XML branch and are broadcast to every nested row
+regardless of sibling order. A self-closing recording element creates a row with empty values for its
+missing child directives.
 
 If the XML file does not contain the attribute `duration/@unit` the header `durationUnit` will still be in 
 the output file, but values will be empty. Look at the file `result.txt` for example output.
+
+Configurations are validated before any XML files are processed. Duplicate column names, ambiguous
+selectors within one recording scope, duplicate recording selectors, directives outside a recording
+scope, and configurations without output columns are rejected. The `_path` column is reserved when
+`--metadata` is enabled.
+
+## Output format
+
+Output uses UTF-8, tab delimiters, and LF record terminators. Fields containing tabs, carriage returns,
+newlines, or double quotes are quoted according to CSV rules; embedded double quotes are doubled.
+Missing values are written as empty fields. This keeps every XML value in one logical TSV field.
+
+Output is assembled in a temporary file in the destination directory and atomically published only after
+all inputs have been parsed and the file has been flushed. An output path that resolves to an input XML
+file or the parser configuration is rejected without modifying that file.
 
 ## Program switches
 
