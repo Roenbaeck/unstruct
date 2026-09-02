@@ -28,7 +28,7 @@ Priority meanings:
 - [x] Add focused regression fixtures for filters, attributes, namespaces,
 	multiple nested records, missing values, malformed XML/config, empty globs,
 	and XML values containing tabs/newlines.
-- [ ] Push and validate the new CI workflow. It now checks formatting,
+- [x] Push and validate the new CI workflow. It now checks formatting,
 	compilation, Clippy, tests, and dependency advisories on a hosted Rust runner;
 	confirm the first run and fix any baseline failures it exposes.
 
