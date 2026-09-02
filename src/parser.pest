@@ -1,4 +1,4 @@
-config = { (element | directive | filter | block)* }
+config = { SOI ~ (element | directive | filter | block)+ ~ EOI }
 
 // built-in removal 
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }

@@ -48,7 +48,7 @@ Priority meanings:
 	recording elements with the same name at the same depth but under different
 	parents overwrite each other in `HashMap`s. Compile full selector paths (or a
 	tree) so separate branches cannot silently capture each other's values.
-- [ ] Require the parser configuration grammar to consume the whole file. The
+- [x] Require the parser configuration grammar to consume the whole file. The
 	Pest `config` rule has no `SOI`/`EOI`, so a valid prefix can succeed while
 	trailing malformed or unsupported text is ignored; an invalid file may also
 	parse as an empty configuration because the top-level expression allows zero

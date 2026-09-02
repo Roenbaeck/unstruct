@@ -74,7 +74,7 @@ fn traverse(
             if element.has_children() {
                 siblings = false;
                 nodes_to_search.extend(element.children().map(Rc::new));
-            }  
+            }
             if recording.is_some() {
                 let mut xml_name = element.tag_name().name().to_string();
                 let schema_name = element.tag_name().namespace();
@@ -99,7 +99,16 @@ fn traverse(
                     skip = true;
                 }
                 //println!("Filtering: {} = {:?} (siblings = {})", &qualified_name, filters.get(&qualified_name), siblings);
-                found = found + record(&xml_name, &xml_value, recording.as_ref().unwrap(), matcher, parsed, result, depth);
+                found = found
+                    + record(
+                        &xml_name,
+                        &xml_value,
+                        recording.as_ref().unwrap(),
+                        matcher,
+                        parsed,
+                        result,
+                        depth,
+                    );
                 for attribute in element.attributes() {
                     let xml_attribute = format!("{}{}{}", xml_name, "/@", attribute.name());
                     xml_value = attribute.value().to_owned();
@@ -111,10 +120,19 @@ fn traverse(
                     }
                     //println!("Filtering: {} = {:?} (siblings = {})", &qualified_name, filters.get(&qualified_name), siblings);
                     //println!("Attribute found: {} (on {} with {} found)", xml_value, recording.as_ref().unwrap(), found);
-                    found = found + record(&xml_attribute, &xml_value, recording.as_ref().unwrap(), matcher, parsed, result, depth);
+                    found = found
+                        + record(
+                            &xml_attribute,
+                            &xml_value,
+                            recording.as_ref().unwrap(),
+                            matcher,
+                            parsed,
+                            result,
+                            depth,
+                        );
                 }
                 // println!("Number found: {}", found);
-            } 
+            }
             if !nodes_to_search.is_empty() && !skip {
                 traverse(
                     nodes_to_search,
@@ -149,7 +167,12 @@ fn traverse(
             if elements.contains_key(&qualified_element_name) {
                 // println!("Element to record: {}", qualified_element_name);
                 let mut siblings_to_search = Vec::default();
-                siblings_to_search.extend(element.next_siblings().filter(|el| el.has_tag_name(element.tag_name())).map(Rc::new));
+                siblings_to_search.extend(
+                    element
+                        .next_siblings()
+                        .filter(|el| el.has_tag_name(element.tag_name()))
+                        .map(Rc::new),
+                );
                 if !siblings_to_search.is_empty() {
                     traverse(
                         siblings_to_search,
@@ -170,8 +193,8 @@ fn traverse(
                 break;
             } else if element.has_children() {
                 nodes_to_search.extend(element.children().map(Rc::new));
-            }  
-            if recording.is_some() && found < levels[depth-1] {
+            }
+            if recording.is_some() && found < levels[depth - 1] {
                 let mut xml_value = element.text().unwrap_or("").to_owned();
                 let qualified_name = format!("{}{}{}", xml_name, LEVEL, depth);
                 let value_filter = filters.get(&qualified_name);
@@ -180,7 +203,16 @@ fn traverse(
                     break;
                 }
                 // println!("Filtering: {} = {:?} (siblings = {})", &qualified_name, filters.get(&qualified_name), siblings);
-                found = found + record(&xml_name, &xml_value, recording.as_ref().unwrap(), matcher, parsed, result, depth);
+                found = found
+                    + record(
+                        &xml_name,
+                        &xml_value,
+                        recording.as_ref().unwrap(),
+                        matcher,
+                        parsed,
+                        result,
+                        depth,
+                    );
                 for attribute in element.attributes() {
                     let xml_attribute = format!("{}{}{}", xml_name, "/@", attribute.name());
                     xml_value = attribute.value().to_owned();
@@ -192,10 +224,19 @@ fn traverse(
                     }
                     //println!("Filtering: {} = {:?} (siblings = {})", &qualified_name, filters.get(&qualified_name), siblings);
                     //println!("Attribute found: {} (on {} with {} found)", xml_value, recording.as_ref().unwrap(), found);
-                    found = found + record(&xml_attribute, &xml_value, recording.as_ref().unwrap(), matcher, parsed, result, depth);
+                    found = found
+                        + record(
+                            &xml_attribute,
+                            &xml_value,
+                            recording.as_ref().unwrap(),
+                            matcher,
+                            parsed,
+                            result,
+                            depth,
+                        );
                 }
-                // println!("Number found: {}", found);    
-            } 
+                // println!("Number found: {}", found);
+            }
         }
         if !nodes_to_search.is_empty() && !skip {
             traverse(
@@ -254,7 +295,7 @@ fn record(
     if let Some(column) = matcher.get(&element) {
         // println!("Found on level {}: {} = {}", depth, &element, xml_value);
         result.insert(column.to_owned(), Match::Value(xml_value.to_owned()));
-        let values = parsed.entry(recording.to_owned()).or_insert(HashSet::new());        
+        let values = parsed.entry(recording.to_owned()).or_insert(HashSet::new());
         values.insert(column.to_owned());
         found = 1;
     }
@@ -274,13 +315,13 @@ fn main() {
     let configuration = read_to_string(parser);
     match configuration {
         Ok(config) => {
-            let (
-                matcher, 
-                filters,
-                mut header, 
-                elements, 
-                levels
-            ) = parse(&config);
+            let (matcher, filters, mut header, elements, levels) = match parse(&config) {
+                Ok(configuration) => configuration,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            };
             let mut result: HashMap<String, Match> = HashMap::default();
             if metadata {
                 header.push("_path".to_owned());
@@ -314,15 +355,19 @@ fn main() {
                             if !common_path.is_some() {
                                 common_path = Some(path.display().to_string());
                             }
-                            if common_path.as_ref().unwrap().starts_with(&path.display().to_string()) {
+                            if common_path
+                                .as_ref()
+                                .unwrap()
+                                .starts_with(&path.display().to_string())
+                            {
                                 local_path = Some(path.display().to_string());
                                 break;
                             }
                             popping = path.pop();
-                        }   
-                        local_path                         
+                        }
+                        local_path
                     }
-                    Err(_e) => None
+                    Err(_e) => None,
                 }
             }
             // println!("Matching part of filename: {:?}", common_path);

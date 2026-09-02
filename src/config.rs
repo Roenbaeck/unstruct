@@ -10,6 +10,14 @@ pub const LEVEL: &str = "|";
 #[grammar = "parser.pest"] // path relative to src
 struct UnstructParser;
 
+pub type ParsedConfiguration = (
+    HashMap<String, String>,
+    HashMap<String, String>,
+    Vec<String>,
+    HashMap<String, Vec<String>>,
+    Vec<usize>,
+);
+
 pub fn block_recurse(
     remainder: Pairs<Rule>,
     matcher: &mut HashMap<String, String>,
@@ -63,7 +71,7 @@ pub fn block_recurse(
                     column_name.as_ref().unwrap().to_owned(),
                 );
                 header.push(column_name.as_ref().unwrap().to_owned());
-                levels[level-1] = levels[level-1] + 1;
+                levels[level - 1] = levels[level - 1] + 1;
                 if let Some(partial_header) = elements.get_mut(&local_element) {
                     partial_header.push(column_name.as_ref().unwrap().to_owned());
                 }
@@ -105,6 +113,7 @@ pub fn block_recurse(
                     level + 1,
                 );
             }
+            Rule::EOI => {}
             _ => {
                 println!("No parsing rule matches: {:?}", parsed);
                 std::process::exit(1);
@@ -113,17 +122,9 @@ pub fn block_recurse(
     }
 }
 
-pub fn parse(
-    configuration: &str,
-) -> (
-    HashMap<String, String>,
-    HashMap<String, String>,
-    Vec<String>,
-    HashMap<String, Vec<String>>,
-    Vec<usize>,
-) {
+pub fn parse(configuration: &str) -> Result<ParsedConfiguration, String> {
     // println!("The configuration is:\n{}", configuration);
-    match UnstructParser::parse(Rule::config, configuration.trim()) {
+    match UnstructParser::parse(Rule::config, configuration) {
         Result::Ok(mut remainder) => {
             let mut matcher: HashMap<String, String> = HashMap::default();
             let mut filters: HashMap<String, String> = HashMap::default();
@@ -140,18 +141,49 @@ pub fn parse(
                 "".to_owned(),
                 1,
             );
-            /*  
+            /*
             println!("matcher: {:?}", &matcher);
             println!("filters: {:?}", &filters);
             println!("header: {:?}", &header);
             println!("elements: {:?}", &elements);
             println!("levels: {:?}", &levels);
             */
-            (matcher, filters, header, elements, levels)        
-        }, 
-        Result::Err(error) => {
-            println!("Could not parse the config file: {:?}", error);
-            std::process::exit(1);
+            Ok((matcher, filters, header, elements, levels))
         }
+        Result::Err(error) => Err(format!("Could not parse the config file:\n{error}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse;
+
+    #[test]
+    fn parses_complete_configuration() {
+        let configuration = r#"
+            <record>
+            {
+                identifier = "id"
+                ["active" = "true"]
+            }
+        "#;
+
+        assert!(parse(configuration).is_ok());
+    }
+
+    #[test]
+    fn rejects_trailing_invalid_content_with_location() {
+        let error = parse("identifier = \"id\"\nthis is not valid").unwrap_err();
+
+        assert!(error.contains("2:"), "missing line location: {error}");
+        assert!(
+            error.contains("this is not valid"),
+            "missing source line: {error}"
+        );
+    }
+
+    #[test]
+    fn rejects_empty_configuration() {
+        assert!(parse(" \n\t").is_err());
     }
 }
