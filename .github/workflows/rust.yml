@@ -51,37 +51,17 @@ jobs:
       - name: Restore Rust cache
         uses: Swatinem/rust-cache@v2
       - name: Check compilation
-        id: compile
         run: cargo check --locked --all-targets
       - name: Run tests
-        id: tests
-        continue-on-error: true
         run: cargo test --locked --all-targets --verbose
       - name: Run Clippy
-        id: clippy
-        continue-on-error: true
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Check formatting
-        id: format
-        continue-on-error: true
         run: cargo fmt --all -- --check
       - name: Audit dependencies
-        id: audit
-        continue-on-error: true
         uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Report quality failures
-        if: always()
-        run: |
-          if [[ "${{ steps.compile.outcome }}" != "success" ||
-                "${{ steps.tests.outcome }}" != "success" ||
-                "${{ steps.clippy.outcome }}" != "success" ||
-                "${{ steps.format.outcome }}" != "success" ||
-                "${{ steps.audit.outcome }}" != "success" ]]; then
-            echo "One or more quality checks failed. See the individual steps above."
-            exit 1
-          fi
 
   lockfile:
     name: Regenerate lockfile
@@ -91,8 +71,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-      - name: Update Clap without raising its Rust requirement
-        run: cargo update -p clap --precise 4.0.32
+      - name: Update dependencies
+        run: cargo update
       - name: Verify atty was removed
         run: '! grep -q ''name = "atty"'' Cargo.lock'
       - name: Test the updated lockfile

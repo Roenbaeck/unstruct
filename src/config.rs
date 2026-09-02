@@ -18,6 +18,7 @@ pub type ParsedConfiguration = (
     Vec<usize>,
 );
 
+#[allow(clippy::too_many_arguments)]
 pub fn block_recurse(
     remainder: Pairs<Rule>,
     matcher: &mut HashMap<String, String>,
@@ -71,7 +72,7 @@ pub fn block_recurse(
                     column_name.as_ref().unwrap().to_owned(),
                 );
                 header.push(column_name.as_ref().unwrap().to_owned());
-                levels[level - 1] = levels[level - 1] + 1;
+                levels[level - 1] += 1;
                 if let Some(partial_header) = elements.get_mut(&local_element) {
                     partial_header.push(column_name.as_ref().unwrap().to_owned());
                 }

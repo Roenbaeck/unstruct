@@ -1,0 +1,2 @@
+GemeenteIdentificatie	dataset	leveringsId	domein	identificatie	_path
+0106	LVBAG	0000000002	NL.IMBAG.Pand	0106100000000999	0106PND15112021-000001.xml

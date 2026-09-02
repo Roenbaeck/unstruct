@@ -44,6 +44,7 @@ enum Match {
 const DELIMITER: char = '\t';
 const TERMINATOR: char = '\n';
 
+#[allow(clippy::too_many_arguments)]
 fn traverse(
     nodes: Vec<Rc<Node>>,
     matcher: &HashMap<String, String>,
@@ -75,13 +76,11 @@ fn traverse(
                 siblings = false;
                 nodes_to_search.extend(element.children().map(Rc::new));
             }
-            if recording.is_some() {
+            if let Some(recording) = recording.as_ref() {
                 let mut xml_name = element.tag_name().name().to_string();
-                let schema_name = element.tag_name().namespace();
-                if schema_name.is_some() {
-                    let namespace = namespaces.get(schema_name.unwrap());
-                    if namespace.is_some() {
-                        xml_name = format!("{}:{}", namespace.unwrap(), xml_name);
+                if let Some(schema_name) = element.tag_name().namespace() {
+                    if let Some(namespace) = namespaces.get(schema_name) {
+                        xml_name = format!("{}:{}", namespace, xml_name);
                     }
                 }
                 let qualified_element_name = format!("{}{}{}", xml_name, LEVEL, depth);
@@ -99,16 +98,9 @@ fn traverse(
                     skip = true;
                 }
                 //println!("Filtering: {} = {:?} (siblings = {})", &qualified_name, filters.get(&qualified_name), siblings);
-                found = found
-                    + record(
-                        &xml_name,
-                        &xml_value,
-                        recording.as_ref().unwrap(),
-                        matcher,
-                        parsed,
-                        result,
-                        depth,
-                    );
+                record(
+                    &xml_name, &xml_value, recording, matcher, parsed, result, depth,
+                );
                 for attribute in element.attributes() {
                     let xml_attribute = format!("{}{}{}", xml_name, "/@", attribute.name());
                     xml_value = attribute.value().to_owned();
@@ -120,16 +112,15 @@ fn traverse(
                     }
                     //println!("Filtering: {} = {:?} (siblings = {})", &qualified_name, filters.get(&qualified_name), siblings);
                     //println!("Attribute found: {} (on {} with {} found)", xml_value, recording.as_ref().unwrap(), found);
-                    found = found
-                        + record(
-                            &xml_attribute,
-                            &xml_value,
-                            recording.as_ref().unwrap(),
-                            matcher,
-                            parsed,
-                            result,
-                            depth,
-                        );
+                    record(
+                        &xml_attribute,
+                        &xml_value,
+                        recording,
+                        matcher,
+                        parsed,
+                        result,
+                        depth,
+                    );
                 }
                 // println!("Number found: {}", found);
             }
@@ -156,11 +147,9 @@ fn traverse(
         skip = false;
         for element in nodes.into_iter().filter(|el| el.is_element()) {
             let mut xml_name = element.tag_name().name().to_string();
-            let schema_name = element.tag_name().namespace();
-            if schema_name.is_some() {
-                let namespace = namespaces.get(schema_name.unwrap());
-                if namespace.is_some() {
-                    xml_name = format!("{}:{}", namespace.unwrap(), xml_name);
+            if let Some(schema_name) = element.tag_name().namespace() {
+                if let Some(namespace) = namespaces.get(schema_name) {
+                    xml_name = format!("{}:{}", namespace, xml_name);
                 }
             }
             let qualified_element_name = format!("{}{}{}", xml_name, LEVEL, depth);
@@ -194,7 +183,7 @@ fn traverse(
             } else if element.has_children() {
                 nodes_to_search.extend(element.children().map(Rc::new));
             }
-            if recording.is_some() && found < levels[depth - 1] {
+            if let Some(recording) = recording.as_ref().filter(|_| found < levels[depth - 1]) {
                 let mut xml_value = element.text().unwrap_or("").to_owned();
                 let qualified_name = format!("{}{}{}", xml_name, LEVEL, depth);
                 let value_filter = filters.get(&qualified_name);
@@ -203,16 +192,9 @@ fn traverse(
                     break;
                 }
                 // println!("Filtering: {} = {:?} (siblings = {})", &qualified_name, filters.get(&qualified_name), siblings);
-                found = found
-                    + record(
-                        &xml_name,
-                        &xml_value,
-                        recording.as_ref().unwrap(),
-                        matcher,
-                        parsed,
-                        result,
-                        depth,
-                    );
+                found += record(
+                    &xml_name, &xml_value, recording, matcher, parsed, result, depth,
+                );
                 for attribute in element.attributes() {
                     let xml_attribute = format!("{}{}{}", xml_name, "/@", attribute.name());
                     xml_value = attribute.value().to_owned();
@@ -224,16 +206,15 @@ fn traverse(
                     }
                     //println!("Filtering: {} = {:?} (siblings = {})", &qualified_name, filters.get(&qualified_name), siblings);
                     //println!("Attribute found: {} (on {} with {} found)", xml_value, recording.as_ref().unwrap(), found);
-                    found = found
-                        + record(
-                            &xml_attribute,
-                            &xml_value,
-                            recording.as_ref().unwrap(),
-                            matcher,
-                            parsed,
-                            result,
-                            depth,
-                        );
+                    found += record(
+                        &xml_attribute,
+                        &xml_value,
+                        recording,
+                        matcher,
+                        parsed,
+                        result,
+                        depth,
+                    );
                 }
                 // println!("Number found: {}", found);
             }
@@ -256,27 +237,27 @@ fn traverse(
             );
         }
     }
-    if elements.keys().all(|key| parsed.contains_key(key)) {
-        if !parsed.keys().all(|key| parsed.get(key).unwrap().is_empty()) {
-            // println!("Parsed <{}>: {:?}", current_element.unwrap(), parsed);
-            // println!("Result: {:?}", result);
-            for values in parsed.values_mut() {
-                values.clear();
-            }
-            // ------------------------------------------------------------------------------------------
-            let mut peekable_header = header.iter().peekable();
-            while let Some(head) = peekable_header.next() {
-                if let Some(Match::Value(column_value)) = result.get(head) {
-                    write!(output, "{}", column_value).expect("Cannot write to output file");
-                }
-                if peekable_header.peek().is_none() {
-                    write!(output, "{}", TERMINATOR).expect("Cannot write to output file");
-                } else {
-                    write!(output, "{}", DELIMITER).expect("Cannot write to output file");
-                }
-            }
-            // ------------------------------------------------------------------------------------------
+    if elements.keys().all(|key| parsed.contains_key(key))
+        && parsed.values().any(|values| !values.is_empty())
+    {
+        // println!("Parsed <{}>: {:?}", current_element.unwrap(), parsed);
+        // println!("Result: {:?}", result);
+        for values in parsed.values_mut() {
+            values.clear();
         }
+        // ------------------------------------------------------------------------------------------
+        let mut peekable_header = header.iter().peekable();
+        while let Some(head) = peekable_header.next() {
+            if let Some(Match::Value(column_value)) = result.get(head) {
+                write!(output, "{}", column_value).expect("Cannot write to output file");
+            }
+            if peekable_header.peek().is_none() {
+                write!(output, "{}", TERMINATOR).expect("Cannot write to output file");
+            } else {
+                write!(output, "{}", DELIMITER).expect("Cannot write to output file");
+            }
+        }
+        // ------------------------------------------------------------------------------------------
     }
 }
 
@@ -295,7 +276,7 @@ fn record(
     if let Some(column) = matcher.get(&element) {
         // println!("Found on level {}: {} = {}", depth, &element, xml_value);
         result.insert(column.to_owned(), Match::Value(xml_value.to_owned()));
-        let values = parsed.entry(recording.to_owned()).or_insert(HashSet::new());
+        let values = parsed.entry(recording.to_owned()).or_default();
         values.insert(column.to_owned());
         found = 1;
     }
@@ -329,8 +310,8 @@ fn main() {
 
             // parse the arguments to get the filename glob pattern
             if !quiet {
-                println!("Finding files matching: {}", &filename);
-                println!("Results are stored in: {}", &outfile);
+                println!("Finding files matching: {}", filename);
+                println!("Results are stored in: {}", outfile);
             }
             let mut output = File::create(outfile).unwrap();
             let mut peekable_header = header.iter().peekable();
@@ -378,14 +359,16 @@ fn main() {
                 match entry {
                     Ok(path) => {
                         let mut filename = path.display().to_string();
-                        if common_path.is_some() && !common_path.as_ref().unwrap().is_empty() {
-                            filename = filename.replace(common_path.as_ref().unwrap(), "");
+                        if let Some(common_path) =
+                            common_path.as_ref().filter(|path| !path.is_empty())
+                        {
+                            filename = filename.replace(common_path, "");
                             if filename.starts_with('/') || filename.starts_with('\\') {
                                 filename = filename[1..].to_string();
                             }
                         }
                         if !quiet {
-                            println!("Parsing the file: {}", &filename);
+                            println!("Parsing the file: {}", filename);
                         }
                         let contents = fs::read_to_string(&path)
                             .expect("Something went wrong reading the file");

@@ -13,20 +13,19 @@ Priority meanings:
 
 ## P0 - Dependency and regression baseline
 
-- [ ] Remove transitive `atty 0.2.14` and close Dependabot alert #1
+- [x] Remove transitive `atty 0.2.14` and close Dependabot alert #1
 	(`GHSA-g98v-hv3f-hcfr`, `RUSTSEC-2021-0145`). It is pulled in by the locked
 	`clap 4.0.26`; `clap 4.0.27` replaced it with `is-terminal`. The manifest's
-	`clap = "4.0"` range already permits the fix, so refresh `Cargo.lock` to a
-	supported Clap 4 release after deciding and documenting the minimum supported
-	Rust version. Confirm with `cargo tree -i atty` and `cargo audit` (or
-	`cargo deny check advisories`). The advisory is low severity, Windows-only,
-	and normally requires a custom global allocator, but `atty` has no patched
-	release and is unmaintained.
-- [ ] Turn all four example directories into golden-file integration tests.
+	Clap requirement and all other direct dependencies have been updated to recent
+	stable releases under the project's current-stable Rust policy. Confirmed with
+	`cargo tree -i atty` and `cargo audit`. The advisory was low severity,
+	Windows-only, and normally required a custom global allocator, but `atty` had
+	no patched release and was unmaintained.
+- [x] Turn all four example directories into golden-file integration tests.
 	Run each parser against its XML fixture(s), compare exact output with
 	`result.txt`, and cover both metadata modes. Preserve these tests before
 	changing traversal behavior.
-- [ ] Add focused regression fixtures for filters, attributes, namespaces,
+- [x] Add focused regression fixtures for filters, attributes, namespaces,
 	multiple nested records, missing values, malformed XML/config, empty globs,
 	and XML values containing tabs/newlines.
 - [ ] Push and validate the new CI workflow. It now checks formatting,
@@ -43,6 +42,13 @@ Priority meanings:
 	the behavior explicit (and configurable only if both modes are useful), then
 	add the expected rows to the CDR golden test. This item from the old TODO is
 	still outstanding.
+- [ ] Fix row expansion when outer-scope context and repeated child recordings
+	are in separate XML branches ([issue #6](https://github.com/Roenbaeck/unstruct/issues/6)).
+	The BAG traversal processes both `<sl:standBestand>` records before finding
+	`GemeenteIdentificatie`, so its shared result buffer retains only the second
+	record. Store values per recording scope, broadcast outer context to every
+	child row, and make output independent of sibling order. Update the BAG golden
+	result to contain both `leveringsId` rows.
 - [ ] Make matcher identity context-aware. Configuration is currently compiled
 	into keys containing only `xml-name + depth`; two directives, filters, or
 	recording elements with the same name at the same depth but under different
@@ -106,11 +112,11 @@ Priority meanings:
 	documented policy and tests.
 - [ ] Finish validating `.github/workflows/rust.yml`. Action and cache versions,
 	artifact names, lightweight push checks, and manual development builds have
-	been modernized. Pin a Rust toolchain/MSRV and verify whether every advertised
-	GNU/musl cross target still builds on current hosted runners.
+	been modernized. Document the stable-toolchain update policy and verify whether
+	every advertised GNU/musl cross target still builds on current hosted runners.
 - [ ] Add package metadata to `Cargo.toml` (`description`, `repository`,
-	`license`, `readme`, and `rust-version`) and document the `Cargo.lock` update
-	policy for this binary.
+	`license`, and `readme`) and document the `Cargo.lock` update policy for this
+	binary.
 - [ ] Refresh the README: correct spelling, link every example, document filters
 	and namespaces, explain row creation and empty/missing values, describe exit
 	behavior, and replace the old `data`-folder reference with the current

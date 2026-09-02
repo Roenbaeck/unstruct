@@ -9,6 +9,10 @@ doing the parsing there. One example of a situation where you need fast parsing 
 have CDR (call detail record) files in XML format, since these can become abundant very quickly. 
 The files currently used for testing are mockup CDR files, found in the data subfolder. 
 
+Building from source requires a current stable Rust toolchain. This project does
+not maintain a minimum supported Rust version. The binary keeps `Cargo.lock`
+under version control so builds use reviewed dependency versions.
+
 When testing version 0.1.3 on a recent MacBook Pro, unstruct was able to parse 10 000 CDR XML files 
 per second. These 10 000 XML files resulted in _one_ tab separated file. Unstruct is many to one 
 if you specify a filename pattern that match several XML files.

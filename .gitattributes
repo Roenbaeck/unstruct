@@ -1,2 +1,4 @@
+example_*/result*.txt whitespace=-blank-at-eol
+tests/fixtures/*.txt whitespace=-blank-at-eol
 # Auto detect text files and perform LF normalization
 * text=auto

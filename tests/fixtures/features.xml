@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root xmlns:n="urn:unstruct:test">
+  <n:Record status="keep">
+    <n:id kind="outer">R1</n:id>
+    <n:Item>
+      <n:value unit="kg">A</n:value>
+      <n:missing>present</n:missing>
+    </n:Item>
+    <n:Item>
+      <n:value unit="kg">B</n:value>
+    </n:Item>
+  </n:Record>
+  <n:Record status="skip">
+    <n:id kind="outer">R2</n:id>
+    <n:Item>
+      <n:value unit="kg">C</n:value>
+      <n:missing>excluded</n:missing>
+    </n:Item>
+  </n:Record>
+</root>

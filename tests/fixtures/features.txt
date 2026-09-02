@@ -1,0 +1,3 @@
+id	kind	value	unit	missing
+R1	outer	A	kg	present
+R1	outer	B	kg	
