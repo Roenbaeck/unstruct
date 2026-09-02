@@ -1,0 +1,22 @@
+{
+	"name": "unstruct",
+	"image": "mcr.microsoft.com/devcontainers/rust:1-bookworm",
+	"postCreateCommand": "cargo test --locked --all-targets",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"rust-lang.rust-analyzer",
+				"tamasfe.even-better-toml",
+				"vadimcn.vscode-lldb"
+			],
+			"settings": {
+				"[rust]": {
+					"editor.defaultFormatter": "rust-lang.rust-analyzer",
+					"editor.formatOnSave": true
+				},
+				"rust-analyzer.check.command": "clippy"
+			}
+		}
+	},
+	"remoteUser": "vscode"
+}

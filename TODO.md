@@ -29,8 +29,9 @@ Priority meanings:
 - [ ] Add focused regression fixtures for filters, attributes, namespaces,
 	multiple nested records, missing values, malformed XML/config, empty globs,
 	and XML values containing tabs/newlines.
-- [ ] Add CI checks for `cargo fmt --check`, `cargo clippy -- -D warnings`, tests,
-	and dependency advisories.
+- [ ] Push and validate the new CI workflow. It now checks formatting,
+	compilation, Clippy, tests, and dependency advisories on a hosted Rust runner;
+	confirm the first run and fix any baseline failures it exposes.
 
 ## P1 - Correctness and data integrity
 
@@ -103,11 +104,10 @@ Priority meanings:
 - [ ] Define XML text semantics. `Node::text()` returns only a direct text child;
 	mixed-content elements, nested text, CDATA, and formatting whitespace need a
 	documented policy and tests.
-- [ ] Modernize `.github/workflows/rust.yml`. Upgrade obsolete `checkout`,
-	`cache`, `upload-artifact`, and `download-artifact` action versions. Artifact
-	v4 also requires unique names for matrix jobs. Pin a Rust toolchain/MSRV, use
-	dependency-aware cache keys, and verify whether every advertised GNU/musl
-	cross target still builds on current hosted runners.
+- [ ] Finish validating `.github/workflows/rust.yml`. Action and cache versions,
+	artifact names, lightweight push checks, and manual development builds have
+	been modernized. Pin a Rust toolchain/MSRV and verify whether every advertised
+	GNU/musl cross target still builds on current hosted runners.
 - [ ] Add package metadata to `Cargo.toml` (`description`, `repository`,
 	`license`, `readme`, and `rust-version`) and document the `Cargo.lock` update
 	policy for this binary.

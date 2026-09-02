@@ -1,88 +1,185 @@
-# Workflow made by Nicolas Vanhoren, https://github.com/nicolas-van/rust-cross-compile-example
-name: Rust
+name: Rust CI
 
 on:
   push:
+    paths-ignore:
+      - '**/*.md'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+  workflow_dispatch:
+    inputs:
+      regenerate_lockfile:
+        description: Regenerate Cargo.lock and upload it as an artifact
+        required: false
+        default: false
+        type: boolean
+      build_windows_binary:
+        description: Build unstruct.exe and upload it for local testing
+        required: false
+        default: false
+        type: boolean
+      build_release_artifacts:
+        description: Build all release targets without publishing a release
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
 
-defaults:
-  run:
-    # necessary for windows
-    shell: bash
+concurrency:
+  group: rust-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
-  test:
+  quality:
+    name: Format, lint, and test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      checks: write
     steps:
-      - uses: actions/checkout@v2
-      - name: Cargo cache
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ./target
-          key: test-cargo-registry
-      - name: List
-        run: find ./
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Install Rust components
+        run: rustup component add rustfmt clippy
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+      - name: Check compilation
+        id: compile
+        run: cargo check --locked --all-targets
       - name: Run tests
-        run: cargo test --verbose
+        id: tests
+        continue-on-error: true
+        run: cargo test --locked --all-targets --verbose
+      - name: Run Clippy
+        id: clippy
+        continue-on-error: true
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Check formatting
+        id: format
+        continue-on-error: true
+        run: cargo fmt --all -- --check
+      - name: Audit dependencies
+        id: audit
+        continue-on-error: true
+        uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Report quality failures
+        if: always()
+        run: |
+          if [[ "${{ steps.compile.outcome }}" != "success" ||
+                "${{ steps.tests.outcome }}" != "success" ||
+                "${{ steps.clippy.outcome }}" != "success" ||
+                "${{ steps.format.outcome }}" != "success" ||
+                "${{ steps.audit.outcome }}" != "success" ]]; then
+            echo "One or more quality checks failed. See the individual steps above."
+            exit 1
+          fi
+
+  lockfile:
+    name: Regenerate lockfile
+    if: github.event_name == 'workflow_dispatch' && inputs.regenerate_lockfile
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Update Clap without raising its Rust requirement
+        run: cargo update -p clap --precise 4.0.32
+      - name: Verify atty was removed
+        run: '! grep -q ''name = "atty"'' Cargo.lock'
+      - name: Test the updated lockfile
+        run: cargo test --locked --all-targets --verbose
+      - name: Show dependency changes
+        run: git diff -- Cargo.lock
+      - name: Upload Cargo.lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-lock-${{ github.sha }}
+          path: Cargo.lock
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-dev-build:
+    name: Build Windows development binary
+    if: github.event_name == 'workflow_dispatch' && inputs.build_windows_binary
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+      - name: Build release binary
+        run: cargo build --locked --release --verbose
+      - name: Upload unstruct.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: unstruct-windows-${{ github.sha }}
+          path: target/release/unstruct.exe
+          if-no-files-found: error
+          retention-days: 7
 
   build:
+    name: Build ${{ matrix.target }}
+    if: >-
+      github.ref_type == 'tag' ||
+      (github.event_name == 'workflow_dispatch' && inputs.build_release_artifacts)
+    needs: quality
     strategy:
       fail-fast: false
       matrix:
-        # a list of all the targets
         include:
-          - TARGET: x86_64-unknown-linux-gnu # tested in a debian container on a mac
-            OS: ubuntu-latest
-          - TARGET: x86_64-unknown-linux-musl # test in an alpine container on a mac
-            OS: ubuntu-latest
-          - TARGET: aarch64-unknown-linux-gnu # tested on aws t4g.nano
-            OS: ubuntu-latest
-          - TARGET: aarch64-unknown-linux-musl # tested on aws t4g.nano in alpine container
-            OS: ubuntu-latest
-          - TARGET: armv7-unknown-linux-gnueabihf # raspberry pi 2-3-4, not tested
-            OS: ubuntu-latest
-          - TARGET: armv7-unknown-linux-musleabihf # raspberry pi 2-3-4, not tested
-            OS: ubuntu-latest
-          - TARGET: arm-unknown-linux-gnueabihf # raspberry pi 0-1, not tested
-            OS: ubuntu-latest
-          - TARGET: arm-unknown-linux-musleabihf # raspberry pi 0-1, not tested
-            OS: ubuntu-latest
-          - TARGET: x86_64-apple-darwin # tested on a mac, is not properly signed so there are security warnings
-            OS: macos-latest
-          - TARGET: x86_64-pc-windows-msvc # tested on a windows machine
-            OS: windows-latest
-    needs: test
-    runs-on: ${{ matrix.OS }}
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: armv7-unknown-linux-gnueabihf
+            os: ubuntu-latest
+          - target: armv7-unknown-linux-musleabihf
+            os: ubuntu-latest
+          - target: arm-unknown-linux-gnueabihf
+            os: ubuntu-latest
+          - target: arm-unknown-linux-musleabihf
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     env:
-      NAME: unstruct # change with the name of your project
-      TARGET: ${{ matrix.TARGET }}
-      OS: ${{ matrix.OS }}
+      NAME: unstruct
+      TARGET: ${{ matrix.target }}
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v2
-      - name: Cargo cache
-        uses: actions/cache@v2
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ./target
-          key: build-cargo-registry-${{matrix.TARGET}}
-      - name: List
-        run: find ./
-      - name: Install and configure dependencies
+          key: ${{ matrix.target }}
+      - name: Install Linux cross-compilers
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y crossbuild-essential-arm64 crossbuild-essential-armhf
+      - name: Configure Linux cross-linkers
+        if: runner.os == 'Linux'
         run: |
-          # dependencies are only needed on ubuntu as that's the only place where
-          # we make cross-compilation
-          if [[ $OS =~ ^ubuntu.*$ ]]; then
-            sudo apt-get install -qq crossbuild-essential-arm64 crossbuild-essential-armhf
-          fi
-
-          # some additional configuration for cross-compilation on linux
-          cat >>~/.cargo/config <<EOF
+          mkdir -p ~/.cargo
+          cat >>~/.cargo/config.toml <<EOF
           [target.aarch64-unknown-linux-gnu]
           linker = "aarch64-linux-gnu-gcc"
           [target.aarch64-unknown-linux-musl]
@@ -96,49 +193,48 @@ jobs:
           [target.arm-unknown-linux-musleabihf]
           linker = "arm-linux-gnueabihf-gcc"
           EOF
-      - name: Install rust target
-        run: rustup target add $TARGET
-      - name: Run build
-        run: cargo build --release --verbose --target $TARGET
-      - name: List target
-        run: find ./target
-      - name: Compress
+      - name: Install Rust target
+        run: rustup target add "$TARGET"
+      - name: Build release binary
+        run: cargo build --locked --release --verbose --target "$TARGET"
+      - name: Package release binary
         run: |
-          mkdir -p ./artifacts
-          # windows is the only OS using a different convention for executable file name
-          if [[ $OS =~ ^windows.*$ ]]; then
-              EXEC=$NAME.exe
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            executable="$NAME.exe"
           else
-              EXEC=$NAME
+            executable="$NAME"
           fi
-          if [[ $GITHUB_REF_TYPE =~ ^tag$ ]]; then
-            TAG=$GITHUB_REF_NAME
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            version="$GITHUB_REF_NAME"
           else
-            TAG=$GITHUB_SHA
+            version="$GITHUB_SHA"
           fi
-          mv ./target/$TARGET/release/$EXEC ./$EXEC
-          tar -czf ./artifacts/$NAME-$TARGET-$TAG.tar.gz $EXEC
-      - name: Archive artifact
-        uses: actions/upload-artifact@v2
+          mkdir -p artifacts
+          tar -czf "artifacts/$NAME-$TARGET-$version.tar.gz" \
+            -C "target/$TARGET/release" "$executable"
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: result
-          path: |
-            ./artifacts
+          name: unstruct-${{ matrix.target }}
+          path: artifacts/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
 
-  # deploys to github releases on tag
   deploy:
-    if: startsWith(github.ref, 'refs/tags/')
+    name: Publish GitHub release
+    if: github.ref_type == 'tag'
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v2
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
         with:
-          name: result
-          path: ./artifacts
-      - name: List
-        run: find ./artifacts
-      - name: Release
-        uses: softprops/action-gh-release@v1
+          pattern: unstruct-*
+          path: artifacts
+          merge-multiple: true
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
         with:
-          files: ./artifacts/*.tar.gz
+          files: artifacts/*.tar.gz
