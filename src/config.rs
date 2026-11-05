@@ -85,6 +85,54 @@ pub struct Column {
     pub name: String,
     pub selector: Selector,
     pub depth: usize,
+    pub dictionary: Option<String>,
+}
+
+/// A child path relative to a dictionary scope or entry, optionally selecting an attribute.
+#[derive(Clone, Debug)]
+pub struct RelativeSelector {
+    pub path: Vec<XmlName>,
+    pub attribute: Option<XmlName>,
+}
+
+impl RelativeSelector {
+    fn parse(value: &str, namespaces: &HashMap<String, String>) -> Result<Self, String> {
+        if value == "." {
+            return Ok(Self {
+                path: Vec::new(),
+                attribute: None,
+            });
+        }
+        if let Some(attribute) = value.strip_prefix('@') {
+            if attribute.contains('/') {
+                return Err(format!("Invalid relative selector: {value:?}"));
+            }
+            return Ok(Self {
+                path: Vec::new(),
+                attribute: Some(XmlName::parse(attribute, namespaces)?),
+            });
+        }
+        let selector = Selector::parse(value, namespaces)?;
+        if selector
+            .path
+            .iter()
+            .any(|name| matches!(name.local_name.as_str(), "." | ".." | "*"))
+        {
+            return Err(format!("Invalid relative selector: {value:?}"));
+        }
+        Ok(Self {
+            path: selector.path,
+            attribute: selector.attribute,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Dictionary {
+    pub name: String,
+    pub entry: RelativeSelector,
+    pub key: RelativeSelector,
+    pub value: RelativeSelector,
 }
 
 #[derive(Clone, Debug)]
@@ -100,6 +148,7 @@ pub struct Recording {
     pub depth: usize,
     pub columns: Vec<Column>,
     pub filters: Vec<Filter>,
+    pub dictionaries: Vec<Dictionary>,
     pub children: Vec<Recording>,
 }
 
@@ -116,6 +165,7 @@ struct RecordingBuilder {
     parent: Option<usize>,
     columns: Vec<Column>,
     filters: Vec<Filter>,
+    dictionaries: Vec<Dictionary>,
     children: Vec<usize>,
 }
 
@@ -136,22 +186,76 @@ fn namespace_parts(pair: Pair<Rule>) -> Result<(String, String), String> {
     }
 }
 
+fn quoted_selector(pair: Pair<'_, Rule>) -> &str {
+    let value = pair.as_str();
+    &value[1..value.len() - 1]
+}
+
+fn dictionary_parts(
+    pair: Pair<Rule>,
+    namespaces: &HashMap<String, String>,
+) -> Result<Dictionary, String> {
+    let mut parts = pair.into_inner();
+    let name = parts.next().unwrap().as_str().to_owned();
+    let mut fields = HashMap::new();
+    for field in parts {
+        let mut parts = field.into_inner();
+        let field_name = parts.next().unwrap().as_str();
+        let selector = RelativeSelector::parse(quoted_selector(parts.next().unwrap()), namespaces)?;
+        if fields.insert(field_name, selector).is_some() {
+            return Err(format!(
+                "Duplicate {field_name} field in dictionary {name:?}"
+            ));
+        }
+    }
+    let mut required = |field| {
+        fields
+            .remove(field)
+            .ok_or_else(|| format!("Missing {field} field in dictionary {name:?}"))
+    };
+    let entry = required("entry")?;
+    let key = required("key")?;
+    let value = required("value")?;
+    if entry.path.is_empty() || entry.attribute.is_some() {
+        return Err(format!(
+            "Dictionary {name:?} entry must select a child element path"
+        ));
+    }
+    Ok(Dictionary {
+        name,
+        entry,
+        key,
+        value,
+    })
+}
+
 fn directive_parts(
     pair: Pair<Rule>,
     namespaces: &HashMap<String, String>,
-) -> Result<(String, Selector), String> {
+) -> Result<(String, Selector, Option<String>), String> {
     let mut column = None;
     let mut selector = None;
+    let mut dictionary = None;
     for part in pair.into_inner() {
         match part.as_rule() {
             Rule::column_name => column = Some(part.as_str().to_owned()),
-            Rule::xml_name => selector = Some(Selector::parse(part.as_str(), namespaces)?),
+            Rule::quoted_selector => {
+                selector = Some(Selector::parse(quoted_selector(part), namespaces)?)
+            }
+            Rule::lookup => {
+                let mut parts = part.into_inner();
+                dictionary = Some(parts.next().unwrap().as_str().to_owned());
+                selector = Some(Selector::parse(
+                    quoted_selector(parts.next().unwrap()),
+                    namespaces,
+                )?);
+            }
             _ => return Err(format!("Malformed directive component: {part:?}")),
         }
     }
 
     match (column, selector) {
-        (Some(column), Some(selector)) => Ok((column, selector)),
+        (Some(column), Some(selector)) => Ok((column, selector, dictionary)),
         _ => Err("Directive must contain a column and selector".to_owned()),
     }
 }
@@ -225,6 +329,7 @@ fn compile_group(
                     parent: parent_scope,
                     columns: Vec::new(),
                     filters: Vec::new(),
+                    dictionaries: Vec::new(),
                     children: Vec::new(),
                 });
                 if let Some(parent) = parent_scope {
@@ -238,15 +343,15 @@ fn compile_group(
                 let scope = local_scope.ok_or_else(|| {
                     format!("Directive at XML depth {depth} is outside a recording scope")
                 })?;
-                let (name, selector) = directive_parts(pair, namespaces)?;
+                let (name, selector, dictionary) = directive_parts(pair, namespaces)?;
                 if !column_names.insert(name.clone()) {
                     return Err(format!("Duplicate output column: {name}"));
                 }
-                if builders[scope]
-                    .columns
-                    .iter()
-                    .any(|column| column.depth == depth && column.selector == selector)
-                {
+                if builders[scope].columns.iter().any(|column| {
+                    column.depth == depth
+                        && column.selector == selector
+                        && column.dictionary == dictionary
+                }) {
                     return Err(format!(
                         "Duplicate selector in recording <{}> at depth {depth}: {}",
                         builders[scope].selector.display(),
@@ -257,8 +362,26 @@ fn compile_group(
                     name: name.clone(),
                     selector,
                     depth,
+                    dictionary,
                 });
                 header.push(name);
+            }
+            Rule::dictionary => {
+                let scope = local_scope
+                    .ok_or_else(|| "Dictionary is outside a recording scope".to_owned())?;
+                let dictionary = dictionary_parts(pair, namespaces)?;
+                if builders[scope]
+                    .dictionaries
+                    .iter()
+                    .any(|existing| existing.name == dictionary.name)
+                {
+                    return Err(format!(
+                        "Duplicate dictionary {:?} in recording <{}>",
+                        dictionary.name,
+                        builders[scope].selector.display()
+                    ));
+                }
+                builders[scope].dictionaries.push(dictionary);
             }
             Rule::filter => {
                 let scope = local_scope.ok_or_else(|| {
@@ -307,12 +430,37 @@ fn build_recording(index: usize, builders: &[RecordingBuilder]) -> Recording {
         depth: builder.depth,
         columns: builder.columns.clone(),
         filters: builder.filters.clone(),
+        dictionaries: builder.dictionaries.clone(),
         children: builder
             .children
             .iter()
             .map(|child| build_recording(*child, builders))
             .collect(),
     }
+}
+
+fn validate_lookups(recording: &Recording, inherited: &HashSet<String>) -> Result<(), String> {
+    let mut visible = inherited.clone();
+    visible.extend(
+        recording
+            .dictionaries
+            .iter()
+            .map(|dictionary| dictionary.name.clone()),
+    );
+    for column in &recording.columns {
+        if let Some(name) = &column.dictionary {
+            if !visible.contains(name) {
+                return Err(format!(
+                    "Unknown dictionary {name:?} for column {:?}",
+                    column.name
+                ));
+            }
+        }
+    }
+    for child in &recording.children {
+        validate_lookups(child, &visible)?;
+    }
+    Ok(())
 }
 
 pub fn parse(configuration: &str) -> Result<Configuration, String> {
@@ -344,13 +492,14 @@ pub fn parse(configuration: &str) -> Result<Configuration, String> {
         return Err("Configuration must declare at least one output column".to_owned());
     }
 
-    Ok(Configuration {
-        header,
-        recordings: roots
-            .into_iter()
-            .map(|root| build_recording(root, &builders))
-            .collect(),
-    })
+    let recordings: Vec<_> = roots
+        .into_iter()
+        .map(|root| build_recording(root, &builders))
+        .collect();
+    for recording in &recordings {
+        validate_lookups(recording, &HashSet::new())?;
+    }
+    Ok(Configuration { header, recordings })
 }
 
 #[cfg(test)]

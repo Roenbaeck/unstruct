@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use tempfile::NamedTempFile;
 use unstruct::config::parse;
-use unstruct::output::TsvWriter;
+use unstruct::output::{OutputFormat, OutputWriter, ParquetCompression};
 
 #[derive(Parser, Debug)]
 #[clap(author, version)]
@@ -14,7 +14,7 @@ struct Args {
     #[clap(short, long)]
     filename: String,
 
-    /// The name of the text file into which the results of the parsing will be output
+    /// Destination TSV or Parquet file
     #[clap(short, long)]
     outfile: String,
 
@@ -29,6 +29,14 @@ struct Args {
     /// Do not write any info to output
     #[clap(short, long)]
     quiet: bool,
+
+    /// Output format (independent of the output filename extension)
+    #[clap(long, value_enum, default_value = "tsv")]
+    format: OutputFormat,
+
+    /// Parquet compression (defaults to zstd; only valid with --format parquet)
+    #[clap(long, value_enum)]
+    compression: Option<ParquetCompression>,
 }
 
 fn common_parent(paths: &[PathBuf]) -> Option<PathBuf> {
@@ -78,7 +86,13 @@ fn run() -> Result<(), String> {
         parser,
         metadata,
         quiet,
+        format,
+        compression,
     } = Args::parse();
+
+    if compression.is_some() && matches!(format, OutputFormat::Tsv) {
+        return Err("--compression requires --format parquet".to_owned());
+    }
 
     let config_source = fs::read_to_string(&parser)
         .map_err(|error| format!("Could not read parser config {parser:?}: {error}"))?;
@@ -127,7 +141,14 @@ fn run() -> Result<(), String> {
             output_parent.display()
         )
     })?;
-    let mut output = TsvWriter::new(output, &configuration, metadata).map_err(|error| {
+    let mut output = OutputWriter::new(
+        output,
+        &configuration,
+        metadata,
+        format,
+        compression.unwrap_or_default(),
+    )
+    .map_err(|error| {
         format!(
             "Could not initialize output file {}: {error}",
             output_path.display()
