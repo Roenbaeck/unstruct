@@ -8,7 +8,7 @@ use std::process::{Command, Output};
 use unstruct::config::parse;
 use unstruct::output::{ParquetCompression, ParquetWriter};
 
-fn read_rows(path: &Path) -> (Vec<String>, Vec<Vec<String>>) {
+fn read_rows(path: &Path) -> (Vec<String>, Vec<Vec<Option<String>>>) {
     let builder = ParquetRecordBatchReaderBuilder::try_new(File::open(path).unwrap()).unwrap();
     let header = builder
         .schema()
@@ -16,7 +16,7 @@ fn read_rows(path: &Path) -> (Vec<String>, Vec<Vec<String>>) {
         .iter()
         .map(|field| {
             assert_eq!(field.data_type(), &DataType::Utf8);
-            assert!(!field.is_nullable());
+            assert!(field.is_nullable());
             field.name().clone()
         })
         .collect();
@@ -29,13 +29,8 @@ fn read_rows(path: &Path) -> (Vec<String>, Vec<Vec<String>>) {
                     .columns()
                     .iter()
                     .map(|column| {
-                        assert_eq!(column.null_count(), 0);
-                        column
-                            .as_any()
-                            .downcast_ref::<StringArray>()
-                            .unwrap()
-                            .value(index)
-                            .to_owned()
+                        let array = column.as_any().downcast_ref::<StringArray>().unwrap();
+                        (!array.is_null(index)).then(|| array.value(index).to_owned())
                     })
                     .collect(),
             );
@@ -90,16 +85,23 @@ fn glob_dictionary_output_matches_tsv_and_preserves_string_values() {
     assert_success(cli(dir, "parquet", &[]));
     let (header, rows) = read_rows(&dir.join("result.parquet"));
     assert_eq!(header, ["counter", "value", "missing", "_path"]);
-    assert_eq!(
-        rows,
+    let expected = [
+        [Some("first"), Some("001"), None, Some("a.xml")],
+        [Some("first"), Some("0,1,2"), None, Some("a.xml")],
         [
-            vec!["first", "001", "", "a.xml"],
-            vec!["first", "0,1,2", "", "a.xml"],
-            vec!["first", " räksmörgås\t\n&\" ", "", "a.xml"],
-            vec!["first", "", "", "a.xml"],
-            vec!["second", "1e300", "", "b.xml"],
-        ]
-    );
+            Some("first"),
+            Some(" räksmörgås\t\n&\" "),
+            None,
+            Some("a.xml"),
+        ],
+        [Some("first"), Some(""), None, Some("a.xml")],
+        [Some("second"), Some("1e300"), None, Some("b.xml")],
+    ];
+    let actual: Vec<Vec<_>> = rows
+        .iter()
+        .map(|row| row.iter().map(|value| value.as_deref()).collect())
+        .collect();
+    assert_eq!(actual, expected);
     let mut tsv = csv::ReaderBuilder::new()
         .delimiter(b'\t')
         .from_path(dir.join("result.tsv"))
@@ -109,7 +111,15 @@ fn glob_dictionary_output_matches_tsv_and_preserves_string_values() {
         .records()
         .map(|row| row.unwrap().iter().map(str::to_owned).collect())
         .collect();
-    assert_eq!(rows, tsv_rows);
+    let flattened: Vec<Vec<_>> = rows
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(|value| value.clone().unwrap_or_default())
+                .collect()
+        })
+        .collect();
+    assert_eq!(flattened, tsv_rows);
     let builder =
         ParquetRecordBatchReaderBuilder::try_new(File::open(dir.join("result.parquet")).unwrap())
             .unwrap();
@@ -156,7 +166,10 @@ fn crosses_batch_and_row_group_boundaries_without_losing_or_reordering_rows() {
     assert_eq!(builder.metadata().file_metadata().num_rows(), 9 * 8001);
     let (_, rows) = read_rows(&path);
     for (index, row) in rows.iter().enumerate() {
-        assert_eq!(row, &[format!("{}:{:05}", index / 8001, index % 8001)]);
+        assert_eq!(
+            row,
+            &[Some(format!("{}:{:05}", index / 8001, index % 8001))]
+        );
     }
 }
 
@@ -195,7 +208,7 @@ fn path_column_is_ordinary_text_when_metadata_is_disabled() {
     writer.finish().unwrap();
     assert_eq!(
         read_rows(&path),
-        (vec!["_path".into()], vec![vec!["original".into()]])
+        (vec!["_path".into()], vec![vec![Some("original".into())]])
     );
     assert_eq!(
         unstruct::output::write_tsv(&config, "<root>original</root>", Vec::new()).unwrap(),
@@ -272,5 +285,123 @@ fn parquet_io_errors_propagate() {
     match result {
         Err(error) => assert!(error.contains("test write failure"), "{error}"),
         Ok(_) => panic!("write failure was ignored"),
+    }
+}
+
+#[test]
+fn nullable_values_and_tolerant_lookups_round_trip_through_cli() {
+    let directory = tempfile::tempdir().unwrap();
+    let dir = directory.path();
+    fs::write(
+        dir.join("config.parser"),
+        r#"
+        <root> dictionary d { entry = "type" key = "@p" value = "." lenient }
+        { <r> name = d["r/@p"] attribute = "r/@value" { element = "value" } }
+    "#,
+    )
+    .unwrap();
+    fs::write(
+        dir.join("a.xml"),
+        r#"<root><type p="1"/>
+        <r p="1" value=""><value/></r><r p="999"/><r p="1" value="001"><value> </value></r>
+    </root>"#,
+    )
+    .unwrap();
+    let output = cli(dir, "parquet", &[]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("1 unresolved"));
+    let (header, rows) = read_rows(&dir.join("result.parquet"));
+    assert_eq!(header, ["name", "attribute", "element", "_path"]);
+    let actual: Vec<Vec<_>> = rows
+        .iter()
+        .map(|row| row.iter().map(|value| value.as_deref()).collect())
+        .collect();
+    assert_eq!(
+        actual,
+        [
+            [Some(""), Some(""), Some(""), Some("a.xml")],
+            [None, None, None, Some("a.xml")],
+            [Some(""), Some("001"), Some(" "), Some("a.xml")],
+        ]
+    );
+    let bytes = fs::read(dir.join("result.parquet")).unwrap();
+    let output = cli(dir, "parquet", &["--null-marker", r"\N"]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("only valid with --format tsv"));
+    assert_eq!(fs::read(dir.join("result.parquet")).unwrap(), bytes);
+}
+
+#[test]
+fn null_and_empty_validity_survives_batch_and_row_group_boundaries() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("nullable.parquet");
+    let config = parse(r#"{ <r> value = "r/@value" }"#).unwrap();
+    let mut writer = ParquetWriter::new(
+        File::create(&path).unwrap(),
+        &config,
+        false,
+        ParquetCompression::Zstd,
+    )
+    .unwrap();
+    for file in 0..9 {
+        let mut xml = String::from("<root>");
+        for index in 0..8001 {
+            match index % 3 {
+                0 => xml.push_str("<r/>"),
+                1 => xml.push_str(r#"<r value=""/>"#),
+                _ => xml.push_str(&format!(r#"<r value="{file}:{index:05}"/>"#)),
+            }
+        }
+        xml.push_str("</root>");
+        writer.write_xml(&config, &xml, None).unwrap();
+    }
+    writer.finish().unwrap();
+    let builder = ParquetRecordBatchReaderBuilder::try_new(File::open(&path).unwrap()).unwrap();
+    assert!(builder.metadata().num_row_groups() > 1);
+    let (_, rows) = read_rows(&path);
+    assert_eq!(rows.len(), 9 * 8001);
+    for (index, row) in rows.iter().enumerate() {
+        let expected = match index % 3 {
+            0 => None,
+            1 => Some(String::new()),
+            _ => Some(format!("{}:{:05}", index / 8001, index % 8001)),
+        };
+        assert_eq!(row, &[expected]);
+    }
+}
+
+#[test]
+fn strict_lookup_filter_failure_does_not_publish_a_partial_batch() {
+    let directory = tempfile::tempdir().unwrap();
+    let dir = directory.path();
+    fs::write(
+        dir.join("config.parser"),
+        r#"
+        <root> dictionary d { entry = "type" key = "@p" value = "." }
+        { <r> [d["r/@p"] = "wanted"] value = "r" }
+    "#,
+    )
+    .unwrap();
+    fs::write(
+        dir.join("a.xml"),
+        r#"<root><r p="1">valid</r><type p="1">wanted</type></root>"#,
+    )
+    .unwrap();
+    fs::write(dir.join("b.xml"), r#"<root><r p="999">orphan</r></root>"#).unwrap();
+    for format in ["tsv", "parquet"] {
+        let path = dir.join(format!("result.{format}"));
+        fs::write(&path, "previous result").unwrap();
+        let output = cli(dir, format, &[]);
+        assert!(!output.status.success());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("b.xml") && stderr.contains("Missing key \"999\""),
+            "{stderr}"
+        );
+        assert_eq!(fs::read_to_string(path).unwrap(), "previous result");
     }
 }

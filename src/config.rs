@@ -83,8 +83,14 @@ impl Selector {
 #[derive(Clone, Debug)]
 pub struct Column {
     pub name: String,
-    pub selector: Selector,
+    pub expression: Expression,
     pub depth: usize,
+}
+
+/// A value source shared by output columns and filters.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Expression {
+    pub selector: Selector,
     pub dictionary: Option<String>,
 }
 
@@ -133,11 +139,12 @@ pub struct Dictionary {
     pub entry: RelativeSelector,
     pub key: RelativeSelector,
     pub value: RelativeSelector,
+    pub lenient: bool,
 }
 
 #[derive(Clone, Debug)]
 pub struct Filter {
-    pub selector: Selector,
+    pub expression: Expression,
     pub expected: String,
     pub depth: usize,
 }
@@ -198,7 +205,15 @@ fn dictionary_parts(
     let mut parts = pair.into_inner();
     let name = parts.next().unwrap().as_str().to_owned();
     let mut fields = HashMap::new();
+    let mut lenient = false;
     for field in parts {
+        if field.as_rule() == Rule::dictionary_flag {
+            if lenient {
+                return Err(format!("Duplicate lenient flag in dictionary {name:?}"));
+            }
+            lenient = true;
+            continue;
+        }
         let mut parts = field.into_inner();
         let field_name = parts.next().unwrap().as_str();
         let selector = RelativeSelector::parse(quoted_selector(parts.next().unwrap()), namespaces)?;
@@ -226,36 +241,50 @@ fn dictionary_parts(
         entry,
         key,
         value,
+        lenient,
+    })
+}
+
+fn expression_parts(
+    pair: Pair<Rule>,
+    namespaces: &HashMap<String, String>,
+) -> Result<Expression, String> {
+    let (dictionary, selector) = match pair.as_rule() {
+        Rule::quoted_selector => (None, Selector::parse(quoted_selector(pair), namespaces)?),
+        Rule::lookup => {
+            let mut parts = pair.into_inner();
+            let name = parts.next().unwrap().as_str().to_owned();
+            (
+                Some(name),
+                Selector::parse(quoted_selector(parts.next().unwrap()), namespaces)?,
+            )
+        }
+        _ => return Err(format!("Malformed value expression: {pair:?}")),
+    };
+    Ok(Expression {
+        selector,
+        dictionary,
     })
 }
 
 fn directive_parts(
     pair: Pair<Rule>,
     namespaces: &HashMap<String, String>,
-) -> Result<(String, Selector, Option<String>), String> {
+) -> Result<(String, Expression), String> {
     let mut column = None;
-    let mut selector = None;
-    let mut dictionary = None;
+    let mut expression = None;
     for part in pair.into_inner() {
         match part.as_rule() {
             Rule::column_name => column = Some(part.as_str().to_owned()),
-            Rule::quoted_selector => {
-                selector = Some(Selector::parse(quoted_selector(part), namespaces)?)
-            }
-            Rule::lookup => {
-                let mut parts = part.into_inner();
-                dictionary = Some(parts.next().unwrap().as_str().to_owned());
-                selector = Some(Selector::parse(
-                    quoted_selector(parts.next().unwrap()),
-                    namespaces,
-                )?);
+            Rule::quoted_selector | Rule::lookup => {
+                expression = Some(expression_parts(part, namespaces)?)
             }
             _ => return Err(format!("Malformed directive component: {part:?}")),
         }
     }
 
-    match (column, selector) {
-        (Some(column), Some(selector)) => Ok((column, selector, dictionary)),
+    match (column, expression) {
+        (Some(column), Some(expression)) => Ok((column, expression)),
         _ => Err("Directive must contain a column and selector".to_owned()),
     }
 }
@@ -263,19 +292,21 @@ fn directive_parts(
 fn filter_parts(
     pair: Pair<Rule>,
     namespaces: &HashMap<String, String>,
-) -> Result<(Selector, String), String> {
-    let mut selector = None;
+) -> Result<(Expression, String), String> {
+    let mut expression = None;
     let mut expected = None;
     for part in pair.into_inner() {
         match part.as_rule() {
-            Rule::xml_name => selector = Some(Selector::parse(part.as_str(), namespaces)?),
+            Rule::quoted_selector | Rule::lookup => {
+                expression = Some(expression_parts(part, namespaces)?)
+            }
             Rule::value => expected = Some(part.as_str().to_owned()),
             _ => return Err(format!("Malformed filter component: {part:?}")),
         }
     }
 
-    match (selector, expected) {
-        (Some(selector), Some(expected)) => Ok((selector, expected)),
+    match (expression, expected) {
+        (Some(expression), Some(expected)) => Ok((expression, expected)),
         _ => Err("Filter must contain a selector and expected value".to_owned()),
     }
 }
@@ -343,26 +374,25 @@ fn compile_group(
                 let scope = local_scope.ok_or_else(|| {
                     format!("Directive at XML depth {depth} is outside a recording scope")
                 })?;
-                let (name, selector, dictionary) = directive_parts(pair, namespaces)?;
+                let (name, expression) = directive_parts(pair, namespaces)?;
                 if !column_names.insert(name.clone()) {
                     return Err(format!("Duplicate output column: {name}"));
                 }
-                if builders[scope].columns.iter().any(|column| {
-                    column.depth == depth
-                        && column.selector == selector
-                        && column.dictionary == dictionary
-                }) {
+                if builders[scope]
+                    .columns
+                    .iter()
+                    .any(|column| column.depth == depth && column.expression == expression)
+                {
                     return Err(format!(
                         "Duplicate selector in recording <{}> at depth {depth}: {}",
                         builders[scope].selector.display(),
-                        selector.display()
+                        expression.selector.display()
                     ));
                 }
                 builders[scope].columns.push(Column {
                     name: name.clone(),
-                    selector,
+                    expression,
                     depth,
-                    dictionary,
                 });
                 header.push(name);
             }
@@ -387,20 +417,20 @@ fn compile_group(
                 let scope = local_scope.ok_or_else(|| {
                     format!("Filter at XML depth {depth} is outside a recording scope")
                 })?;
-                let (selector, expected) = filter_parts(pair, namespaces)?;
+                let (expression, expected) = filter_parts(pair, namespaces)?;
                 if builders[scope]
                     .filters
                     .iter()
-                    .any(|filter| filter.depth == depth && filter.selector == selector)
+                    .any(|filter| filter.depth == depth && filter.expression == expression)
                 {
                     return Err(format!(
                         "Duplicate filter in recording <{}> at depth {depth}: {}",
                         builders[scope].selector.display(),
-                        selector.display()
+                        expression.selector.display()
                     ));
                 }
                 builders[scope].filters.push(Filter {
-                    selector,
+                    expression,
                     expected,
                     depth,
                 });
@@ -447,12 +477,17 @@ fn validate_lookups(recording: &Recording, inherited: &HashSet<String>) -> Resul
             .iter()
             .map(|dictionary| dictionary.name.clone()),
     );
-    for column in &recording.columns {
-        if let Some(name) = &column.dictionary {
+    for expression in recording
+        .columns
+        .iter()
+        .map(|column| &column.expression)
+        .chain(recording.filters.iter().map(|filter| &filter.expression))
+    {
+        if let Some(name) = &expression.dictionary {
             if !visible.contains(name) {
                 return Err(format!(
-                    "Unknown dictionary {name:?} for column {:?}",
-                    column.name
+                    "Unknown dictionary {name:?} in recording <{}>",
+                    recording.selector.display()
                 ));
             }
         }

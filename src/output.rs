@@ -7,7 +7,6 @@ use csv::{Terminator, Writer, WriterBuilder};
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::properties::WriterProperties;
-use std::collections::HashMap;
 use std::io::Write;
 use std::sync::Arc;
 
@@ -79,6 +78,27 @@ impl<W: Write + Send> OutputWriter<W> {
         }
     }
 
+    pub fn set_null_marker(&mut self, marker: String) -> Result<(), String> {
+        match self {
+            Self::Tsv(writer) => {
+                writer.set_null_marker(marker);
+                Ok(())
+            }
+            Self::Parquet(_) => Err("--null-marker is only valid with --format tsv".to_owned()),
+        }
+    }
+
+    pub fn write_rows(
+        &mut self,
+        rows: Vec<Row>,
+        metadata_path: Option<&str>,
+    ) -> Result<usize, String> {
+        match self {
+            Self::Tsv(writer) => writer.write_rows(rows, metadata_path),
+            Self::Parquet(writer) => writer.write_rows(rows, metadata_path),
+        }
+    }
+
     pub fn finish(self) -> Result<W, String> {
         match self {
             Self::Tsv(writer) => writer.finish(),
@@ -96,7 +116,7 @@ pub struct ParquetWriter<W: Write + Send> {
     output: ArrowWriter<W>,
     header: Vec<String>,
     schema: Arc<Schema>,
-    columns: Vec<Vec<String>>,
+    columns: Vec<Vec<Option<String>>>,
     buffered_rows: usize,
     buffered_bytes: usize,
     include_metadata: bool,
@@ -113,7 +133,7 @@ impl<W: Write + Send> ParquetWriter<W> {
         let schema = Arc::new(Schema::new(
             header
                 .iter()
-                .map(|name| Field::new(name, DataType::Utf8, false))
+                .map(|name| Field::new(name, DataType::Utf8, true))
                 .collect::<Vec<_>>(),
         ));
         let compression = match compression {
@@ -147,15 +167,23 @@ impl<W: Write + Send> ParquetWriter<W> {
         metadata_path: Option<&str>,
     ) -> Result<usize, String> {
         let rows = extract_rows(configuration, xml)?;
+        self.write_rows(rows, metadata_path)
+    }
+
+    pub fn write_rows(
+        &mut self,
+        rows: Vec<Row>,
+        metadata_path: Option<&str>,
+    ) -> Result<usize, String> {
         let count = rows.len();
         for mut row in rows {
             for (name, column) in self.header.iter().zip(&mut self.columns) {
                 let value = if self.include_metadata && name == "_path" {
-                    metadata_path.unwrap_or_default().to_owned()
+                    metadata_path.map(str::to_owned)
                 } else {
                     row.remove(name).unwrap_or_default()
                 };
-                self.buffered_bytes += value.len();
+                self.buffered_bytes += value.as_ref().map_or(0, String::len);
                 column.push(value);
             }
             self.buffered_rows += 1;
@@ -204,6 +232,7 @@ pub struct TsvWriter<W: Write> {
     output: Writer<W>,
     header: Vec<String>,
     include_metadata: bool,
+    null_marker: String,
 }
 
 impl<W: Write> TsvWriter<W> {
@@ -225,7 +254,12 @@ impl<W: Write> TsvWriter<W> {
             output,
             header,
             include_metadata,
+            null_marker: String::new(),
         })
+    }
+
+    pub fn set_null_marker(&mut self, marker: String) {
+        self.null_marker = marker;
     }
 
     pub fn write_xml(
@@ -235,6 +269,14 @@ impl<W: Write> TsvWriter<W> {
         metadata_path: Option<&str>,
     ) -> Result<usize, String> {
         let rows = extract_rows(configuration, xml)?;
+        self.write_rows(rows, metadata_path)
+    }
+
+    pub fn write_rows(
+        &mut self,
+        rows: Vec<Row>,
+        metadata_path: Option<&str>,
+    ) -> Result<usize, String> {
         let row_count = rows.len();
         for row in &rows {
             self.write_row(row, metadata_path)?;
@@ -243,16 +285,14 @@ impl<W: Write> TsvWriter<W> {
     }
 
     fn write_row(&mut self, row: &Row, metadata_path: Option<&str>) -> Result<(), String> {
-        let values: HashMap<&str, &str> = row
-            .iter()
-            .map(|(column, value)| (column.as_str(), value.as_str()))
-            .collect();
         self.output
             .write_record(self.header.iter().map(|column| {
                 if self.include_metadata && column == "_path" {
-                    metadata_path.unwrap_or_default()
+                    metadata_path.unwrap_or(&self.null_marker)
                 } else {
-                    values.get(column.as_str()).copied().unwrap_or_default()
+                    row.get(column)
+                        .and_then(|value| value.as_deref())
+                        .unwrap_or(&self.null_marker)
                 }
             }))
             .map_err(|error| format!("Cannot write to output: {error}"))

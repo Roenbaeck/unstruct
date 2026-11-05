@@ -1,8 +1,53 @@
-use crate::config::{Configuration, Recording, RelativeSelector, Selector, XmlName};
+use crate::config::{Configuration, Expression, Recording, RelativeSelector, Selector, XmlName};
 use roxmltree::{Document, Node};
 use std::collections::HashMap;
 
-pub type Row = HashMap<String, String>;
+/// None means no selected value; Some("") is present but empty.
+pub type Row = HashMap<String, Option<String>>;
+
+/// Counts unresolved lookup evaluations in lenient dictionaries, including filters.
+/// Retains at most five bounded examples; short-circuited expressions are not counted.
+#[derive(Debug, Default)]
+pub struct LookupDiagnostics {
+    pub missing_lookups: u64,
+    pub examples: Vec<String>,
+}
+
+fn abbreviated(value: &str) -> String {
+    let mut chars = value.chars();
+    let mut result: String = chars.by_ref().take(160).collect();
+    if chars.next().is_some() {
+        result.push('…');
+    }
+    result
+}
+
+impl LookupDiagnostics {
+    fn record(&mut self, dictionary: &str, key: Option<&str>, node: Node<'_, '_>) {
+        self.missing_lookups += 1;
+        if self.examples.len() < 5 {
+            let key = key.map(abbreviated);
+            self.examples.push(format!(
+                "dictionary {:?}, key {key:?}, <{}> at {}",
+                abbreviated(dictionary),
+                abbreviated(node.tag_name().name()),
+                node.document().text_pos_at(node.range().start)
+            ));
+        }
+    }
+
+    pub fn merge(&mut self, other: Self, source: &str) {
+        self.missing_lookups += other.missing_lookups;
+        for example in other
+            .examples
+            .into_iter()
+            .take(5usize.saturating_sub(self.examples.len()))
+        {
+            self.examples
+                .push(format!("{:?}: {example}", abbreviated(source)));
+        }
+    }
+}
 
 fn depth(node: Node<'_, '_>) -> usize {
     node.ancestors().filter(Node::is_element).count()
@@ -54,17 +99,74 @@ fn selector_value(selector: &Selector, node: Node<'_, '_>) -> Option<String> {
     }
 }
 
-fn scope_matches(recording: &Recording, node: Node<'_, '_>) -> bool {
-    recording.filters.iter().all(|filter| {
-        node.descendants().any(|candidate| {
-            depth(candidate) == filter.depth
-                && selector_value(&filter.selector, candidate).as_deref()
-                    == Some(filter.expected.as_str())
-        })
+struct DictionaryValues {
+    values: HashMap<String, String>,
+    lenient: bool,
+}
+
+type Dictionaries = HashMap<String, DictionaryValues>;
+
+struct Context<'a> {
+    dictionaries: Vec<Dictionaries>,
+    diagnostics: &'a mut LookupDiagnostics,
+}
+
+fn evaluate(
+    expression: &Expression,
+    value: Option<String>,
+    node: Node<'_, '_>,
+    context: &mut Context<'_>,
+) -> Result<Option<String>, String> {
+    let Some(name) = &expression.dictionary else {
+        return Ok(value);
+    };
+    let dictionary = context
+        .dictionaries
+        .iter()
+        .rev()
+        .find_map(|scope| scope.get(name))
+        .ok_or_else(|| format!("Unknown dictionary {name:?}"))?;
+    if let Some(resolved) = value.as_ref().and_then(|key| dictionary.values.get(key)) {
+        return Ok(Some(resolved.clone()));
+    }
+    if dictionary.lenient {
+        context.diagnostics.record(name, value.as_deref(), node);
+        return Ok(None);
+    }
+    Err(match value {
+        Some(key) => format!("Missing key {key:?} in dictionary {name:?}"),
+        None => format!("Missing lookup key for dictionary {name:?}"),
     })
 }
 
-type Dictionaries = HashMap<String, HashMap<String, String>>;
+fn scope_matches(
+    recording: &Recording,
+    node: Node<'_, '_>,
+    context: &mut Context<'_>,
+) -> Result<bool, String> {
+    for filter in &recording.filters {
+        let mut matched = false;
+        for candidate in node.descendants().filter(|candidate| {
+            depth(*candidate) == filter.depth
+                && element_matches(&filter.expression.selector, *candidate)
+        }) {
+            let value = evaluate(
+                &filter.expression,
+                selector_value(&filter.expression.selector, candidate),
+                candidate,
+                context,
+            )?;
+            if value.as_deref() == Some(filter.expected.as_str()) {
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
 
 fn relative_nodes<'a, 'input>(
     selector: &RelativeSelector,
@@ -123,7 +225,13 @@ fn build_dictionaries(recording: &Recording, node: Node<'_, '_>) -> Result<Dicti
                 ));
             }
         }
-        dictionaries.insert(dictionary.name.clone(), entries);
+        dictionaries.insert(
+            dictionary.name.clone(),
+            DictionaryValues {
+                values: entries,
+                lenient: dictionary.lenient,
+            },
+        );
     }
     Ok(dictionaries)
 }
@@ -131,59 +239,46 @@ fn build_dictionaries(recording: &Recording, node: Node<'_, '_>) -> Result<Dicti
 fn extract_scope(
     recording: &Recording,
     node: Node<'_, '_>,
-    dictionaries: &mut Vec<Dictionaries>,
+    context: &mut Context<'_>,
 ) -> Result<Vec<Row>, String> {
-    if !scope_matches(recording, node) {
-        return Ok(Vec::new());
-    }
-    let context = |error| {
+    let with_location = |error| {
         format!(
             "{error} in <{}> at {}",
             node.tag_name().name(),
             node.document().text_pos_at(node.range().start)
         )
     };
-    dictionaries.push(build_dictionaries(recording, node).map_err(context)?);
-    let result = extract_scope_rows(recording, node, dictionaries).map_err(context);
-    dictionaries.pop();
+    // Build local dictionaries before filters so forward references and local shadowing work.
+    context
+        .dictionaries
+        .push(build_dictionaries(recording, node).map_err(with_location)?);
+    let result = extract_scope_rows(recording, node, context).map_err(with_location);
+    context.dictionaries.pop();
     result
 }
 
 fn extract_scope_rows(
     recording: &Recording,
     node: Node<'_, '_>,
-    dictionaries: &mut Vec<Dictionaries>,
+    context: &mut Context<'_>,
 ) -> Result<Vec<Row>, String> {
+    if !scope_matches(recording, node, context)? {
+        return Ok(Vec::new());
+    }
     let mut base = Row::new();
     for column in &recording.columns {
-        let value = node.descendants().find_map(|candidate| {
+        let selected = node.descendants().find_map(|candidate| {
             (depth(candidate) == column.depth)
-                .then(|| selector_value(&column.selector, candidate))
+                .then(|| selector_value(&column.expression.selector, candidate))
                 .flatten()
+                .map(|value| (value, candidate))
         });
-        let value = match &column.dictionary {
-            Some(name) => {
-                let key = value.ok_or_else(|| {
-                    format!(
-                        "Missing lookup key for dictionary {name:?}, column {:?}",
-                        column.name
-                    )
-                })?;
-                dictionaries
-                    .iter()
-                    .rev()
-                    .find_map(|scope| scope.get(name))
-                    .and_then(|entries| entries.get(&key))
-                    .cloned()
-                    .ok_or_else(|| {
-                        format!(
-                            "Missing key {key:?} in dictionary {name:?}, column {:?}",
-                            column.name
-                        )
-                    })?
-            }
-            None => value.unwrap_or_default(),
+        let (value, location) = match selected {
+            Some((value, candidate)) => (Some(value), candidate),
+            None => (None, node),
         };
+        let value = evaluate(&column.expression, value, location, context)
+            .map_err(|error| format!("{error}, column {:?}", column.name))?;
         base.insert(column.name.clone(), value);
     }
 
@@ -193,7 +288,7 @@ fn extract_scope_rows(
         for candidate in node.descendants().filter(|candidate| {
             depth(*candidate) == child.depth && element_matches(&child.selector, *candidate)
         }) {
-            child_rows.extend(extract_scope(child, candidate, dictionaries)?);
+            child_rows.extend(extract_scope(child, candidate, context)?);
         }
         if child_rows.is_empty() {
             return Ok(Vec::new());
@@ -230,17 +325,30 @@ fn combine_rows(parents: Vec<Row>, mut children: Vec<Row>) -> Vec<Row> {
         .collect()
 }
 
+/// Extract values without retaining tolerant-lookup diagnostics.
+/// Use extract_rows_with_diagnostics when the caller needs to report missing keys.
 pub fn extract_rows(configuration: &Configuration, xml: &str) -> Result<Vec<Row>, String> {
+    extract_rows_with_diagnostics(configuration, xml, &mut LookupDiagnostics::default())
+}
+
+pub fn extract_rows_with_diagnostics(
+    configuration: &Configuration,
+    xml: &str,
+    diagnostics: &mut LookupDiagnostics,
+) -> Result<Vec<Row>, String> {
     let document =
         Document::parse(xml).map_err(|error| format!("Could not parse the xml: {error}"))?;
 
     let mut rows = Vec::new();
-    let mut dictionaries = Vec::new();
+    let mut context = Context {
+        dictionaries: Vec::new(),
+        diagnostics,
+    };
     for recording in &configuration.recordings {
         for node in document.descendants().filter(|node| {
             depth(*node) == recording.depth && element_matches(&recording.selector, *node)
         }) {
-            rows.extend(extract_scope(recording, node, &mut dictionaries)?);
+            rows.extend(extract_scope(recording, node, &mut context)?);
         }
     }
     Ok(rows)
@@ -277,19 +385,19 @@ mod tests {
             .iter()
             .map(|row| {
                 (
-                    row["source"].as_str(),
-                    row["group"].as_str(),
-                    row["item"].as_str(),
-                    row["value"].as_str(),
+                    row["source"].as_deref().unwrap(),
+                    row["group"].as_deref().unwrap(),
+                    row["item"].as_deref(),
+                    row["value"].as_deref().unwrap(),
                 )
             })
             .collect();
         assert_eq!(
             actual,
             [
-                ("shared", "A", "1", "first"),
-                ("shared", "A", "", ""),
-                ("shared", "B", "2", "second"),
+                ("shared", "A", Some("1"), "first"),
+                ("shared", "A", None, ""),
+                ("shared", "B", Some("2"), "second"),
             ]
         );
     }
@@ -326,9 +434,9 @@ mod tests {
             .iter()
             .map(|row| {
                 (
-                    row["group"].as_str(),
-                    row["left"].as_str(),
-                    row["right"].as_str(),
+                    row["group"].as_deref().unwrap(),
+                    row["left"].as_deref().unwrap(),
+                    row["right"].as_deref().unwrap(),
                 )
             })
             .collect();
@@ -359,7 +467,10 @@ mod tests {
             <item xmlns="urn:other">wrong namespace</item>
         </root>"#;
         let rows = extract_rows(&config, xml).unwrap();
-        let actual: Vec<_> = rows.iter().map(|row| row["value"].as_str()).collect();
+        let actual: Vec<_> = rows
+            .iter()
+            .map(|row| row["value"].as_deref().unwrap())
+            .collect();
         assert_eq!(actual, ["", "left+textright"]);
         assert!(
             extract_rows(&config, "<root><item>unqualified</item></root>")
@@ -377,7 +488,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(rows[0]["value"], "left+cdataright");
+        assert_eq!(rows[0]["value"].as_deref(), Some("left+cdataright"));
     }
 
     #[test]
@@ -389,7 +500,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(rows[0]["value"], "  value\n");
+        assert_eq!(rows[0]["value"].as_deref(), Some("  value\n"));
     }
 
     #[test]
@@ -407,6 +518,6 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(rows[0]["value"], "matched");
+        assert_eq!(rows[0]["value"].as_deref(), Some("matched"));
     }
 }

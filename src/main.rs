@@ -6,6 +6,7 @@ use std::process::ExitCode;
 use tempfile::NamedTempFile;
 use unstruct::config::parse;
 use unstruct::output::{OutputFormat, OutputWriter, ParquetCompression};
+use unstruct::transform::{extract_rows_with_diagnostics, LookupDiagnostics};
 
 #[derive(Parser, Debug)]
 #[clap(author, version)]
@@ -37,6 +38,10 @@ struct Args {
     /// Parquet compression (defaults to zstd; only valid with --format parquet)
     #[clap(long, value_enum)]
     compression: Option<ParquetCompression>,
+
+    /// Text written for null TSV fields (default: empty; only valid with --format tsv)
+    #[clap(long)]
+    null_marker: Option<String>,
 }
 
 fn common_parent(paths: &[PathBuf]) -> Option<PathBuf> {
@@ -88,10 +93,14 @@ fn run() -> Result<(), String> {
         quiet,
         format,
         compression,
+        null_marker,
     } = Args::parse();
 
     if compression.is_some() && matches!(format, OutputFormat::Tsv) {
         return Err("--compression requires --format parquet".to_owned());
+    }
+    if null_marker.is_some() && matches!(format, OutputFormat::Parquet) {
+        return Err("--null-marker is only valid with --format tsv".to_owned());
     }
 
     let config_source = fs::read_to_string(&parser)
@@ -155,6 +164,10 @@ fn run() -> Result<(), String> {
         )
     })?;
 
+    if let Some(marker) = null_marker {
+        output.set_null_marker(marker)?;
+    }
+    let mut diagnostics = LookupDiagnostics::default();
     for path in matching_files {
         let relative_path = metadata_path(&path, common.as_deref());
         if !quiet {
@@ -162,12 +175,9 @@ fn run() -> Result<(), String> {
         }
         let contents = fs::read_to_string(&path)
             .map_err(|error| format!("Could not read XML file {}: {error}", path.display()))?;
-        output
-            .write_xml(
-                &configuration,
-                &contents,
-                metadata.then_some(relative_path.as_str()),
-            )
+        let mut file_diagnostics = LookupDiagnostics::default();
+        extract_rows_with_diagnostics(&configuration, &contents, &mut file_diagnostics)
+            .and_then(|rows| output.write_rows(rows, metadata.then_some(relative_path.as_str())))
             .map_err(|error| {
                 format!(
                     "Could not process XML file {} or write output {}: {error}",
@@ -175,8 +185,15 @@ fn run() -> Result<(), String> {
                     output_path.display()
                 )
             })?;
+        diagnostics.merge(file_diagnostics, &relative_path);
     }
 
+    if diagnostics.missing_lookups > 0 {
+        eprintln!("warning: {} unresolved dictionary lookup evaluations treated as null (including filtered records); showing up to 5 examples:", diagnostics.missing_lookups);
+        for example in &diagnostics.examples {
+            eprintln!("  {example}");
+        }
+    }
     let output = output.finish().map_err(|error| {
         format!(
             "Could not finalize output file {}: {error}",
