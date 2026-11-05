@@ -30,3 +30,29 @@ target/release/unstruct \
 
 Using `'example_3gpp/*.xml'` processes both examples into one file with 7,425 rows.
 Omit `--format parquet` and use a `.tsv` output filename for TSV output.
+
+To extract only `pmCellDowntimeAuto`, use the lookup filter in `downtime.parser`:
+
+```console
+target/release/unstruct \
+  --filename 'example_3gpp/*.xml' \
+  --parser example_3gpp/downtime.parser \
+  --format parquet \
+  --metadata \
+  --outfile downtime.parquet
+```
+
+This produces three rows from the full-size sample, one for each matching cell,
+with the measurement in the `downtime` column. The small synthetic example has
+no matching counters. Filtering uses the resolved counter name within each
+block, so the numeric counter position need not be consistent across files.
+
+Both parsers are strict by default. Add a standalone `lenient` line inside
+`dictionary counters { ... }` to accept orphaned measurement keys. Unresolved
+lookups then become null and produce a warning summary; they do not pass the
+downtime filter. Duplicate or malformed dictionary entries still fail.
+
+Missing selected XML elements and attributes also become null in Parquet;
+present empty elements and attributes remain empty strings. TSV writes both as
+empty fields by default. Use `--null-marker '\N'` with TSV if the distinction is
+needed, choosing a marker that cannot occur as a real value.

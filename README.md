@@ -45,7 +45,7 @@ column, while an element in angle brackets starts a recording scope:
 Each matched recording element creates a row. Repeated nested recordings create
 multiple rows and inherit values from their outer recording. Outer values are
 broadcast regardless of sibling order. A matched empty recording still creates
-a row; missing elements and attributes produce empty fields.
+a row; missing selected elements and attributes produce null values.
 
 Selectors can include an ancestor path when local names at the same depth are
 ambiguous, for example `left/value` and `right/value`. A filter keeps a recording
@@ -82,6 +82,12 @@ An element value is the concatenation of its direct text and CDATA children in
 document order. Text inside nested elements is excluded. Leading, trailing, and
 formatting whitespace is preserved. Use a selector for the nested element when
 its text should be a separate value.
+
+`<el/>` and `<el></el>` both produce an empty string. An absent selected element
+or attribute produces null; a present empty attribute produces an empty string.
+Whitespace-only text remains a string, and the literal text `null` is a string.
+This is unstruct's mapping of missing values; `xsi:nil` has no special treatment.
+An absent recording element produces no row.
 
 Configurations are validated before XML processing. Empty configurations,
 undeclared or duplicate namespace aliases, duplicate columns, ambiguous
@@ -136,9 +142,9 @@ selector at the directive's depth; its result is the dictionary key. Keys and
 values remain exact strings, including whitespace and leading zeros.
 
 Each entry must resolve to exactly one key and one value. Duplicate keys,
-missing entry fields, missing lookup keys, and undefined dictionaries are
-errors. Duplicate dictionary names in the same recording are rejected. A
-nested declaration with the same name shadows the outer dictionary entirely;
+missing entry fields, and undefined dictionaries are errors. Missing lookup
+keys also fail by default. Duplicate dictionary names in the same recording are
+rejected. A nested declaration with the same name shadows the outer dictionary entirely;
 an absent key does not fall back to the outer dictionary. Dictionaries never
 carry over between sibling recording instances or input files. Errors report
 the dictionary, recording location, and input path through the CLI.
@@ -147,6 +153,50 @@ See [the complete 3GPP parser](example_3gpp/measurements.parser) for node, job,
 period, object, counter, and value columns. It produces one row per `r` element.
 The [3GPP examples](example_3gpp) include a small synthetic fixture and a sanitized
 full-size sample with 7,422 measurement values.
+
+### Lookup filters and lenient dictionaries
+
+Filters can compare a resolved dictionary value with a string. At the same
+brace depth as `<m:r>`, this keeps only the requested counter:
+
+```text
+<m:r>
+[counters["m:r/@p"] = "pmCellDowntimeAuto"]
+counter = counters["m:r/@p"]
+downtime = "m:r"
+```
+
+Selectors in filters follow the same depth and namespace rules as column
+selectors. A filter succeeds if any matching value equals its expected string;
+multiple filters must all succeed. Evaluation short-circuits after a match or
+a failed filter. Local dictionaries are built before filters, so their entries
+can appear after their uses in XML. Invalid entries still fail even if a filter
+would discard that recording. See [the downtime parser](example_3gpp/downtime.parser)
+for a complete example.
+
+To accept absent lookup inputs or keys without a dictionary entry, add the
+standalone `lenient` flag to that dictionary:
+
+```text
+dictionary counters {
+    entry = "m:measType"
+    key = "@p"
+    value = "."
+    lenient
+}
+```
+
+An unresolved lookup then produces null. Null never equals a quoted string,
+including `""` or `"null"`, so it cannot pass a string equality filter. An empty
+key or dictionary value remains a valid string. `lenient` only affects lookup
+misses; malformed entries and duplicate keys still fail. Omit the flag for
+strict behavior.
+
+The CLI reports a total count of unresolved lookup evaluations and at most five
+examples across the batch, with input paths and XML locations. This includes
+lookups evaluated in filters for discarded rows. A key used in both a filter and
+a column can be evaluated more than once; skipped expressions are not counted.
+Warnings remain visible with `--quiet`.
 
 ### Parquet output
 
@@ -164,10 +214,13 @@ TSV remains the default; the filename extension does not select the format.
 Parquet uses Zstandard compression by default; `--compression none` disables
 compression. `--compression` is only valid with `--format parquet`.
 
-Every Parquet column, including `_path`, is a non-null UTF-8 string. Missing
-ordinary values are empty strings, as in TSV. Numeric-looking values, timestamps,
-and comma-separated arrays are preserved as text without type inference.
+Every Parquet column, including `_path`, is a nullable UTF-8 string. Missing
+values are stored as Parquet nulls, distinct from empty strings. Numeric-looking
+values, timestamps, and comma-separated arrays are preserved as text without type inference.
 Columns follow parser declaration order, with `_path` appended when requested.
+Compared with v0.3.0, fields are now nullable and absent values no longer become
+empty strings in Parquet. Consumers that require a non-null schema should be
+updated.
 
 The writer batches up to 8,192 rows or approximately 8 MiB of string data and
 targets row groups of at most 65,536 rows or approximately 64 MiB. It also flushes
@@ -186,8 +239,12 @@ components, so sibling names such as `foo` and `foobar` remain distinct.
 
 TSV output uses UTF-8, tab delimiters, and LF record terminators. Fields containing
 tabs, carriage returns, newlines, or double quotes are quoted according to CSV
-rules; embedded double quotes are doubled. Empty and missing values remain empty
-fields.
+rules; embedded double quotes are doubled. By default, empty strings and nulls
+both produce empty fields, preserving existing TSV output. Use
+`--null-marker '\N'` to write nulls as `\N` while keeping empty strings empty.
+This option is only valid with TSV. Choose a marker absent from real values:
+TSV has no native null type and the marker is a convention, without collision
+escaping. Parquet preserves the distinction without a marker.
 
 Batch processing is fail-fast. Output is assembled in a temporary file in the
 destination directory and atomically published only after every input succeeds
@@ -196,7 +253,7 @@ read, XML parse, dictionary lookup, write, or flush
 failure returns a nonzero status, reports the relevant path on stderr, and does
 not publish partial output. An output path that resolves to an input XML file or
 the parser configuration is rejected without modifying that file. `--quiet`
-suppresses informational stdout but never suppresses errors.
+suppresses informational stdout but never suppresses warnings or errors.
 
 ## Options
 
@@ -209,10 +266,16 @@ suppresses informational stdout but never suppresses errors.
 | `-q, --quiet` | Suppress informational output |
 | `--format <tsv\|parquet>` | Output format (default: `tsv`) |
 | `--compression <zstd\|none>` | Parquet compression (default: `zstd` for Parquet) |
+| `--null-marker <text>` | TSV representation of null (default: empty field) |
 
 Run `unstruct --help` for the generated command-line help.
 
 ## Development policy
+
+Rust library callers now receive `Row` values as `Option<String>`: `None` is null,
+and `Some(String::new())` is an empty string. Use `extract_rows_with_diagnostics`
+and a writer's `write_rows` method to collect and report lenient lookup misses.
+The convenience `extract_rows` and `write_xml` methods discard these diagnostics.
 
 `Cargo.lock` is committed because unstruct is an application. Dependency
 updates are intentional: run `cargo update`, review the lockfile diff, and pass

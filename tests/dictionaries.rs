@@ -16,19 +16,19 @@ fn documented_3gpp_parser_resolves_counters_and_inherits_period_and_object() {
     let rows = extract_rows(&config, include_str!("../example_3gpp/measurements.xml")).unwrap();
     assert_eq!(rows.len(), 3);
     for row in &rows {
-        assert_eq!(row["node"], "example-node");
-        assert_eq!(row["period_start"], "2026-01-01T10:00:00Z");
-        assert_eq!(row["period_end"], "2026-01-01T10:15:00Z");
-        assert_eq!(row["duration"], "PT900S");
-        assert_eq!(row["meas_info"], "example-group");
+        assert_eq!(row["node"].as_deref(), Some("example-node"));
+        assert_eq!(row["period_start"].as_deref(), Some("2026-01-01T10:00:00Z"));
+        assert_eq!(row["period_end"].as_deref(), Some("2026-01-01T10:15:00Z"));
+        assert_eq!(row["duration"].as_deref(), Some("PT900S"));
+        assert_eq!(row["meas_info"].as_deref(), Some("example-group"));
     }
-    assert_eq!(rows[0]["counter"], "packetsReceived");
-    assert_eq!(rows[0]["value"], "001");
-    assert_eq!(rows[1]["counter"], "packetDistribution");
-    assert_eq!(rows[1]["value"], "0,1,2");
-    assert_eq!(rows[2]["counter"], "packetsLost");
-    assert_eq!(rows[2]["object"], "cell-B");
-    assert_eq!(rows[2]["job"], "second-job");
+    assert_eq!(rows[0]["counter"].as_deref(), Some("packetsReceived"));
+    assert_eq!(rows[0]["value"].as_deref(), Some("001"));
+    assert_eq!(rows[1]["counter"].as_deref(), Some("packetDistribution"));
+    assert_eq!(rows[1]["value"].as_deref(), Some("0,1,2"));
+    assert_eq!(rows[2]["counter"].as_deref(), Some("packetsLost"));
+    assert_eq!(rows[2]["object"].as_deref(), Some("cell-B"));
+    assert_eq!(rows[2]["job"].as_deref(), Some("second-job"));
 }
 
 #[test]
@@ -41,17 +41,25 @@ fn resolves_forward_entries_and_isolates_identical_ids_and_files() {
     let rows = extract_rows(&config, xml).unwrap();
     assert_eq!(rows.len(), 2);
     assert_eq!(
-        (&rows[0]["object"], &rows[0]["counter"], &rows[0]["value"]),
-        (&"A".into(), &"first".into(), &"001".into())
+        (
+            rows[0]["object"].as_deref(),
+            rows[0]["counter"].as_deref(),
+            rows[0]["value"].as_deref()
+        ),
+        (Some("A"), Some("first"), Some("001"))
     );
     assert_eq!(
-        (&rows[1]["object"], &rows[1]["counter"], &rows[1]["value"]),
-        (&"B".into(), &"second".into(), &"0,1,2".into())
+        (
+            rows[1]["object"].as_deref(),
+            rows[1]["counter"].as_deref(),
+            rows[1]["value"].as_deref()
+        ),
+        (Some("B"), Some("second"), Some("0,1,2"))
     );
     let another_file = xml.replace("first", "third");
     assert_eq!(
-        extract_rows(&config, &another_file).unwrap()[0]["counter"],
-        "third"
+        extract_rows(&config, &another_file).unwrap()[0]["counter"].as_deref(),
+        Some("third")
     );
     let missing =
         r#"<root xmlns="urn:measurements"><info><object><r p="14">1</r></object></info></root>"#;
@@ -95,8 +103,8 @@ fn resolves_relative_paths_namespaced_attributes_and_direct_text() {
         <id other:p="01"/><label> left<![CDATA[+text]]><ignored>skip</ignored> right </label>
         </type></types></root>"#;
     let rows = extract_rows(&config, xml).unwrap();
-    assert_eq!(rows[0]["raw"], "01");
-    assert_eq!(rows[0]["resolved"], " left+text right ");
+    assert_eq!(rows[0]["raw"].as_deref(), Some("01"));
+    assert_eq!(rows[0]["resolved"].as_deref(), Some(" left+text right "));
     let ambiguous = xml.replace("<label>", "<label>extra</label><label>");
     assert!(extract_rows(&config, &ambiguous)
         .unwrap_err()
@@ -123,8 +131,8 @@ fn declaration_order_and_nested_shadowing_are_lexical() {
     .unwrap();
     let xml = r#"<root p="1"><child p="1"><type p="1">inner</type></child><type p="1">outer</type></root>"#;
     let rows = extract_rows(&config, xml).unwrap();
-    assert_eq!(rows[0]["outer"], "outer");
-    assert_eq!(rows[0]["inner"], "inner");
+    assert_eq!(rows[0]["outer"].as_deref(), Some("outer"));
+    assert_eq!(rows[0]["inner"].as_deref(), Some("inner"));
     let no_fallback = xml.replace("<type p=\"1\">inner</type>", "");
     assert!(extract_rows(&config, &no_fallback).is_err());
 }

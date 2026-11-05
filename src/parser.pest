@@ -14,9 +14,10 @@ element = { "<" ~ (!">" ~ ANY)* ~ ">" }
 directive = { column_name ~ "=" ~ (lookup | quoted_selector) }
 quoted_selector = { "\"" ~ xml_name ~ "\"" }
 lookup = { column_name ~ "[" ~ quoted_selector ~ "]" }
-dictionary = { "dictionary" ~ column_name ~ "{" ~ dictionary_field* ~ "}" }
+dictionary = { "dictionary" ~ column_name ~ "{" ~ (dictionary_flag | dictionary_field)* ~ "}" }
+dictionary_flag = { "lenient" }
 dictionary_field = { dictionary_field_name ~ "=" ~ quoted_selector }
 dictionary_field_name = { "entry" | "key" | "value" }
 value = { ( "\"\"" | (!"\"" ~ ANY) )* }
-filter = { "[" ~ "\"" ~ xml_name ~ "\"" ~ "=" ~ "\"" ~ value ~ "\"" ~ "]" }
+filter = { "[" ~ (lookup | quoted_selector) ~ "=" ~ "\"" ~ value ~ "\"" ~ "]" }
 block = { "{" ~ (dictionary | element | directive | filter | block)* ~ "}" }

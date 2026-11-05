@@ -1,0 +1,32 @@
+namespace m = "http://www.3gpp.org/ftp/specs/archive/32_series/32.435#measCollec"
+
+<m:measCollecFile>
+{
+    {
+        node = "m:fileHeader/m:fileSender/@localDn"
+        period_start = "m:fileHeader/m:measCollec/@beginTime"
+    }
+    <m:measData>
+    {
+        <m:measInfo>
+        meas_info = "m:measInfo/@measInfoId"
+        dictionary counters {
+            entry = "m:measType"
+            key = "@p"
+            value = "."
+        }
+        {
+            job = "m:job/@jobId"
+            period_end = "m:granPeriod/@endTime"
+            duration = "m:granPeriod/@duration"
+            <m:measValue>
+            object = "m:measValue/@measObjLdn"
+            {
+                <m:r>
+                [counters["m:r/@p"] = "pmCellDowntimeAuto"]
+                counter = counters["m:r/@p"]
+                downtime = "m:r"
+            }
+        }
+    }
+}
