@@ -1,4 +1,4 @@
-config = { SOI ~ xml_namespace* ~ (element | directive | filter | block)+ ~ EOI }
+config = { SOI ~ xml_namespace* ~ (dictionary | element | directive | filter | block)+ ~ EOI }
 
 // built-in removal 
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
@@ -11,7 +11,12 @@ xml_namespace = { "namespace" ~ namespace_prefix ~ "=" ~ "\"" ~ namespace_uri ~ 
 xml_name = { ( "\"\"" | (!"\"" ~ ANY) )* }
 
 element = { "<" ~ (!">" ~ ANY)* ~ ">" }
-directive = { column_name ~ "=" ~ "\"" ~ xml_name ~ "\"" }
+directive = { column_name ~ "=" ~ (lookup | quoted_selector) }
+quoted_selector = { "\"" ~ xml_name ~ "\"" }
+lookup = { column_name ~ "[" ~ quoted_selector ~ "]" }
+dictionary = { "dictionary" ~ column_name ~ "{" ~ dictionary_field* ~ "}" }
+dictionary_field = { dictionary_field_name ~ "=" ~ quoted_selector }
+dictionary_field_name = { "entry" | "key" | "value" }
 value = { ( "\"\"" | (!"\"" ~ ANY) )* }
 filter = { "[" ~ "\"" ~ xml_name ~ "\"" ~ "=" ~ "\"" ~ value ~ "\"" ~ "]" }
-block = { "{" ~ (element | directive | filter | block)* ~ "}" }
+block = { "{" ~ (dictionary | element | directive | filter | block)* ~ "}" }

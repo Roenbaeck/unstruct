@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<measCollecFile xmlns="http://www.3gpp.org/ftp/specs/archive/32_series/32.435#measCollec">
+  <fileHeader>
+    <fileSender localDn="example-node"/>
+    <measCollec beginTime="2026-01-01T10:00:00Z"/>
+  </fileHeader>
+  <measData>
+    <measInfo measInfoId="example-group">
+      <job jobId="first-job"/>
+      <granPeriod duration="PT900S" endTime="2026-01-01T10:15:00Z"/>
+      <measValue measObjLdn="cell-A">
+        <r p="14">001</r>
+        <r p="15">0,1,2</r>
+      </measValue>
+      <measType p="15">packetDistribution</measType>
+      <measType p="14">packetsReceived</measType>
+    </measInfo>
+    <measInfo measInfoId="example-group">
+      <job jobId="second-job"/>
+      <granPeriod duration="PT900S" endTime="2026-01-01T10:15:00Z"/>
+      <measType p="14">packetsLost</measType>
+      <measValue measObjLdn="cell-B"><r p="14">0</r></measValue>
+    </measInfo>
+  </measData>
+</measCollecFile>
